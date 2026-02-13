@@ -441,63 +441,7 @@ export default function RoundPage() {
           }
         >
           {shotsExpanded ? (
-            <div className="shot-list">
-              {shotsByHole.map(([hole, shots], idx) => (
-                <div key={`hole-${hole}`} className={idx === 0 ? "" : "shot-group"}>
-                  <button
-                    type="button"
-                    className="hole-toggle"
-                    onClick={() =>
-                      setExpandedHoles((prev) => ({
-                        ...prev,
-                        [hole]: !prev[hole],
-                      }))
-                    }
-                    aria-expanded={expandedHoles[hole] ?? false}
-                  >
-                    Hole {hole} ({shots.length} shots){" "}
-                    <span className="muted">{expandedHoles[hole] ? "▼" : "▶"}</span>
-                  </button>
-                  {(expandedHoles[hole] ?? false) && (
-                    <div className="shot-list">
-                      {shots.map((shot) => {
-                        const { sg, category, isValid } = calculateStrokesGained(shot);
-                        const startUnit = shot.startLie === "GREEN" ? "ft" : "m";
-                        const endUnit = shot.endLie === "GREEN" ? "ft" : "m";
-                        return (
-                          <div key={`${shot.holeNumber}-${shot.shotNumber}`} className="shot-row score-row">
-                            <div>
-                              <div className="score-line">
-                                {shot.startLie} → {shot.endLie}
-                              </div>
-                              <div className="muted">
-                                {shot.startDistance}
-                                {startUnit} → {shot.endDistance}
-                                {endUnit}
-                              </div>
-                            </div>
-                            <div className="score-meta">
-                              {shot.penaltyStrokes > 0 && (
-                                <span className="muted">Penalty +{shot.penaltyStrokes}</span>
-                              )}
-                              {isValid && sg !== null ? (
-                                <>
-                                  <StatChip value={sg} decimals={2} />
-                                  <span className="chip">{category}</span>
-                                </>
-                              ) : (
-                                <span className="muted">SG: —</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {round.shots.length === 0 && <div className="muted">No shots yet.</div>}
-            </div>
+            <div className="muted">Shot list temporarily disabled.</div>
           ) : (
             <div className="muted">Tap to expand shot list.</div>
           )}
