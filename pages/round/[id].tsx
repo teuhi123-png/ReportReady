@@ -13,6 +13,25 @@ import StatChip from "../../components/ui/StatChip";
 const LIES: Lie[] = ["TEE", "FAIRWAY", "ROUGH", "BUNKER", "RECOVERY", "FRINGE", "GREEN"];
 
 export default function RoundPage() {
+  // DEBUG: temporary input to confirm typing/focus works at top-most layer.
+  const debugInput = (
+    <input
+      id="debugInput"
+      type="text"
+      placeholder="DEBUG: can you type here?"
+      style={{
+        position: "fixed",
+        top: 10,
+        left: 10,
+        zIndex: 99999,
+        padding: 12,
+        fontSize: 18,
+        background: "white",
+        color: "black",
+      }}
+      onChange={(e) => console.log("DEBUG typing", e.target.value)}
+    />
+  );
   const router = useRouter();
   const { id } = router.query;
   const roundId = typeof id === "string" ? id : "";
@@ -170,11 +189,17 @@ export default function RoundPage() {
   }
 
   if (!round) {
-    return <div className="page">Loading round...</div>;
+    return (
+      <div className="page">
+        {debugInput}
+        Loading round...
+      </div>
+    );
   }
 
   return (
     <div className="page mobile-action-spacer">
+      {debugInput}
       <div className="top-header">
         <div className="top-row container header-wrap">
           <div className="header-left">
