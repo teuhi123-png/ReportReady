@@ -282,12 +282,15 @@ export default function RoundPage() {
                   <label className="input-field">
                     <div className="label">{startDistanceLabel}</div>
                     <input
-                      type="number"
+                      type="text"
                       inputMode="numeric"
                       className={`input ${startDistanceError ? "input-error" : ""}`.trim()}
                       placeholder="e.g. 145"
-                      value={startDistance ?? ""}
-                      onChange={(e) => setStartDistance(e.target.value)}
+                      defaultValue={startDistance ?? ""}
+                      onChange={(e) => console.log("START change:", e.target.value)}
+                      onInput={(e) =>
+                        console.log("START input:", (e.target as HTMLInputElement).value)
+                      }
                       ref={startDistanceRef}
                       onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
                       style={{
@@ -325,12 +328,15 @@ export default function RoundPage() {
                         {puttingMode ? "Leave distance (ft)" : endDistanceLabel}
                       </div>
                       <input
-                        type="number"
+                        type="text"
                         inputMode="numeric"
                         className={`input ${endDistanceError ? "input-error" : ""}`.trim()}
                         placeholder="e.g. 12"
-                        value={endDistance ?? ""}
-                        onChange={(e) => setEndDistance(e.target.value)}
+                        defaultValue={endDistance ?? ""}
+                        onChange={(e) => console.log("END change:", e.target.value)}
+                        onInput={(e) =>
+                          console.log("END input:", (e.target as HTMLInputElement).value)
+                        }
                         ref={endDistanceRef}
                         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
                       />
