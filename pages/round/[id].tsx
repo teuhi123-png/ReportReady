@@ -576,9 +576,15 @@ export default function RoundPage() {
       {showEndRoundModal && (
         <div className="modal-backdrop">
           <div className="modal">
-            <div className="h2">End round?</div>
-            <div className="muted">You won’t be able to add more shots.</div>
-            <div className="action-bar">
+            <div className="modal-body">
+              <div className="h2">End round?</div>
+              <div className="muted">You won’t be able to add more shots.</div>
+            </div>
+            <div className="modal-footer">
+              {(() => {
+                console.log("EndRoundModal footer rendered");
+                return null;
+              })()}
               <Button
                 variant="secondary"
                 type="button"
