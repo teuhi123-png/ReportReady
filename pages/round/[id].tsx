@@ -21,21 +21,19 @@ export default function RoundPage() {
 
   const [holeNumber, setHoleNumber] = useState(1);
   const [startLie, setStartLie] = useState<Lie>("TEE");
-  const [startDistanceText, setStartDistanceText] = useState("");
+  const [startDistance, setStartDistance] = useState(0);
   const [penaltyStrokes, setPenaltyStrokes] = useState(0);
   const [holed, setHoled] = useState(false);
   const [endLie, setEndLie] = useState<Lie>("FAIRWAY");
-  const [endDistanceText, setEndDistanceText] = useState("");
+  const [endDistance, setEndDistance] = useState(0);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [notes, setNotes] = useState("");
   const [showErrors, setShowErrors] = useState(false);
   const puttingMode = startLie === "GREEN";
-  const targetHoles = round?.targetHoles ?? 18;
-  const roundEnded = Boolean(round?.endedAt);
 
   const startDistanceRef = useRef<HTMLInputElement>(null);
   const endDistanceRef = useRef<HTMLInputElement>(null);
-  const lastEndDistanceRef = useRef("");
+  const lastEndDistanceRef = useRef(0);
   const [shotsExpanded, setShotsExpanded] = useState(false);
 
   useEffect(() => {
@@ -71,29 +69,36 @@ export default function RoundPage() {
     holeNumber,
     shotNumber: nextShotNumber,
     startLie,
-    startDistance: parseInt(startDistanceText || "0", 10),
+    startDistance,
     endLie: holed ? "GREEN" : endLie,
-    endDistance: holed ? 0 : parseInt(endDistanceText || "0", 10),
+    endDistance: holed ? 0 : endDistance,
     penaltyStrokes,
   };
 
-  const roundComplete = holed && holeNumber === 18;
-  const canSave =
-    startDistanceText.trim() !== "" && (holed || endDistanceText.trim() !== "");
   const previewSg = useMemo(() => calculateStrokesGained(previewShot), [previewShot]);
 
-  const shotsByHole = useMemo(() => {
-    if (!round) return [];
-    const map = new Map<number, Shot[]>();
-    for (const shot of round.shots) {
-      const list = map.get(shot.holeNumber) ?? [];
-      list.push(shot);
-      map.set(shot.holeNumber, list);
-    }
-    return Array.from(map.entries()).sort((a, b) => a[0] - b[0]);
-  }, [round]);
+  const roundComplete = holed && holeNumber === 18;
+  const canSave = startDistance !== 0 && (holed || endDistance !== 0);
+  const targetHoles = round?.targetHoles ?? 18;
+  const roundEnded = Boolean(round?.endedAt);
 
-  const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
+  const startDistanceError =
+    showErrors && startDistance === 0 ? "Enter a start distance" : undefined;
+  const endDistanceError =
+    showErrors && !holed && endDistance === 0 ? "Enter an end distance" : undefined;
+  const startDistanceLabel =
+    startLie === "GREEN" ? "Start distance (ft)" : "Start distance (m)";
+  const endDistanceLabel = endLie === "GREEN" ? "End distance (ft)" : "End distance (m)";
+  const startDistanceHelp = startLie === "GREEN" ? "Putting distances in feet" : undefined;
+  const endDistanceHelp = endLie === "GREEN" ? "Putting distances in feet" : undefined;
+  const startPlaceholder = startLie === "GREEN" ? "e.g. 12" : "e.g. 145";
+  const endPlaceholder = endLie === "GREEN" ? "e.g. 6" : "e.g. 20";
+  const previewStartUnit = startLie === "GREEN" ? "ft" : "m";
+  const previewEndUnit = (holed ? "GREEN" : endLie) === "GREEN" ? "ft" : "m";
+  const endSuggestion =
+    holeNumber >= targetHoles && isHoleComplete && !roundEnded
+      ? "Last hole complete — consider ending the round."
+      : undefined;
 
   function handleSaveShot(): void {
     if (!roundId) return;
@@ -110,9 +115,9 @@ export default function RoundPage() {
     if (previewShot.endDistance === 0 || holed) {
       setHoleNumber((h) => Math.min(18, h + 1));
       setStartLie("TEE");
-      setStartDistanceText("");
+      setStartDistance(0);
       setEndLie("FAIRWAY");
-      setEndDistanceText("");
+      setEndDistance(0);
       setPenaltyStrokes(0);
       setHoled(false);
       setShowAdvanced(false);
@@ -121,9 +126,9 @@ export default function RoundPage() {
     } else {
       const nextStartLie = previewShot.endLie;
       setStartLie(nextStartLie);
-      setStartDistanceText(endDistanceText);
+      setStartDistance(endDistance);
       setEndLie(nextStartLie === "GREEN" ? "GREEN" : "FAIRWAY");
-      setEndDistanceText("");
+      setEndDistance(0);
       setPenaltyStrokes(0);
       setHoled(false);
       setNotes("");
@@ -155,31 +160,6 @@ export default function RoundPage() {
     return <div className="page">Loading round...</div>;
   }
 
-  const startDistanceError =
-    showErrors && startDistanceText.trim() === ""
-      ? "Enter a start distance"
-      : undefined;
-  const endDistanceError =
-    showErrors && !holed && endDistanceText.trim() === ""
-      ? "Enter an end distance"
-      : undefined;
-  const startDistanceLabel =
-    startLie === "GREEN" ? "Start distance (ft)" : "Start distance (m)";
-  const endDistanceLabel =
-    endLie === "GREEN" ? "End distance (ft)" : "End distance (m)";
-  const startDistanceHelp =
-    startLie === "GREEN" ? "Putting distances in feet" : undefined;
-  const endDistanceHelp =
-    endLie === "GREEN" ? "Putting distances in feet" : undefined;
-  const startPlaceholder = startLie === "GREEN" ? "e.g. 12" : "e.g. 145";
-  const endPlaceholder = endLie === "GREEN" ? "e.g. 6" : "e.g. 20";
-  const previewStartUnit = startLie === "GREEN" ? "ft" : "m";
-  const previewEndUnit = (holed ? "GREEN" : endLie) === "GREEN" ? "ft" : "m";
-  const endSuggestion =
-    holeNumber >= targetHoles && isHoleComplete && !roundEnded
-      ? "Last hole complete — consider ending the round."
-      : undefined;
-
   return (
     <div className="page mobile-action-spacer">
       <div className="top-header">
@@ -208,7 +188,6 @@ export default function RoundPage() {
       </div>
 
       <div className="container">
-
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -245,16 +224,11 @@ export default function RoundPage() {
                 />
                 <div className="field-gap">
                   <Input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
+                    type="number"
                     label={startDistanceLabel}
                     placeholder={startPlaceholder}
-                    value={startDistanceText}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      if (/^\\d*$/.test(next)) setStartDistanceText(next);
-                    }}
+                    value={startDistance}
+                    onChange={(e) => setStartDistance(Number(e.target.value))}
                     inputRef={startDistanceRef}
                     error={startDistanceError}
                     helpText={startDistanceHelp}
@@ -279,16 +253,11 @@ export default function RoundPage() {
                 <div className="field-gap">
                   {(!puttingMode || !holed) && (
                     <Input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
+                      type="number"
                       label={puttingMode ? "Leave distance (ft)" : endDistanceLabel}
                       placeholder={puttingMode ? "e.g. 3" : endPlaceholder}
-                      value={endDistanceText}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        if (/^\\d*$/.test(next)) setEndDistanceText(next);
-                      }}
+                      value={endDistance}
+                      onChange={(e) => setEndDistance(Number(e.target.value))}
                       inputRef={endDistanceRef}
                       error={endDistanceError}
                       helpText={endDistanceHelp}
@@ -307,10 +276,10 @@ export default function RoundPage() {
                         setHoled(next);
                         setEndLie("GREEN");
                         if (next) {
-                          lastEndDistanceRef.current = endDistanceText;
-                          setEndDistanceText("0");
+                          lastEndDistanceRef.current = endDistance;
+                          setEndDistance(0);
                         } else {
-                          setEndDistanceText(lastEndDistanceRef.current || "");
+                          setEndDistance(lastEndDistanceRef.current || 0);
                         }
                       }}
                     >
@@ -329,7 +298,7 @@ export default function RoundPage() {
                         setHoled(next);
                         if (next) {
                           setEndLie("GREEN");
-                          setEndDistanceText("0");
+                          setEndDistance(0);
                         }
                       }}
                     >
@@ -396,7 +365,7 @@ export default function RoundPage() {
                   </div>
                   <div className="field-gap">
                     {previewSg.isValid ? (
-                      <StatChip value={previewSg.sg} label={previewSg.category} decimals={2} />
+                      <StatChip value={previewSg.sg ?? 0} label={previewSg.category} decimals={2} />
                     ) : (
                       <span className="muted">SG: —</span>
                     )}
@@ -443,10 +412,10 @@ export default function RoundPage() {
             </button>
           }
         >
-            {shotsExpanded ? (
-              <div className="shot-list">
-                {shotsByHole.map(([hole, shots], idx) => (
-                  <div key={`hole-${hole}`} className={idx === 0 ? "" : "shot-group"}>
+          {shotsExpanded ? (
+            <div className="shot-list">
+              {shotsByHole.map(([hole, shots], idx) => (
+                <div key={`hole-${hole}`} className={idx === 0 ? "" : "shot-group"}>
                   <button
                     type="button"
                     className="hole-toggle"
@@ -467,10 +436,6 @@ export default function RoundPage() {
                         const { sg, category, isValid } = calculateStrokesGained(shot);
                         const startUnit = shot.startLie === "GREEN" ? "ft" : "m";
                         const endUnit = shot.endLie === "GREEN" ? "ft" : "m";
-                        const startDisplay =
-                          startUnit === "ft" ? shot.startDistance : shot.startDistance;
-                        const endDisplay =
-                          endUnit === "ft" ? shot.endDistance : shot.endDistance;
                         return (
                           <div key={`${shot.holeNumber}-${shot.shotNumber}`} className="shot-row score-row">
                             <div>
@@ -478,8 +443,8 @@ export default function RoundPage() {
                                 {shot.startLie} → {shot.endLie}
                               </div>
                               <div className="muted">
-                                {startDisplay}
-                                {startUnit} → {endDisplay}
+                                {shot.startDistance}
+                                {startUnit} → {shot.endDistance}
                                 {endUnit}
                               </div>
                             </div>
