@@ -568,7 +568,9 @@ export default function RoundPage() {
                           maxLength={2}
                           placeholder="4"
                           value={customPutts}
-                          onChange={(e) => setCustomPutts(clampDistanceText(e.target.value))}
+                          onChange={(e) =>
+                            setCustomPutts(clampDistanceText(e.target.value, false))
+                          }
                           disabled={isEnded}
                         />
                       </label>
@@ -576,7 +578,7 @@ export default function RoundPage() {
                         type="button"
                         variant="secondary"
                         onClick={() => {
-                          const parsed = parseDistance(customPutts);
+                          const parsed = parseDistance(customPutts, false);
                           const count = Math.min(10, Math.max(4, parsed || 4));
                           setPuttsCount(count);
                           setHoled(true);
