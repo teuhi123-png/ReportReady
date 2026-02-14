@@ -4,9 +4,10 @@ import { useRouter } from "next/router";
 import type { Round, Shot } from "../../types/golf";
 import { getRound } from "../../lib/storage";
 import { calculateStrokesGained } from "../../lib/strokesGained";
-import { baselineIsComplete, getExpectedStrokes } from "../../lib/expectedStrokes";
+import { baselineIsComplete, formatDistanceMeters, getExpectedStrokes } from "../../lib/expectedStrokes";
 import Card from "../../components/ui/Card";
 import StatChip from "../../components/ui/StatChip";
+import { buildRoundBreakdown } from "../../lib/roundBreakdown";
 import {
   Bar,
   BarChart,
@@ -201,6 +202,14 @@ export default function SummaryPage() {
       .map(([hole, data]) => ({ hole, shots: data.shots, penalties: data.penalties }))
       .sort((a, b) => a.hole - b.hole);
   }, [round]);
+
+  const breakdown = useMemo(() => {
+    if (!round) return [];
+    return buildRoundBreakdown(round);
+  }, [round]);
+
+  const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
+  const [expandedShots, setExpandedShots] = useState<Record<string, boolean>>({});
 
   if (!router.isReady) {
     return <div className="page">Loading...</div>;
@@ -402,6 +411,98 @@ export default function SummaryPage() {
               </div>
             ))}
           </div>
+        </Card>
+
+        <Card title="Shot List">
+          {breakdown.length === 0 ? (
+            <div className="muted">No shots yet.</div>
+          ) : (
+            <div className="hero">
+              {breakdown.map((hole) => {
+                const open = Boolean(expandedHoles[hole.holeNumber]);
+                return (
+                  <div key={`shot-list-hole-${hole.holeNumber}`} className="field-gap">
+                    <button
+                      type="button"
+                      className="pill"
+                      onClick={() =>
+                        setExpandedHoles((prev) => ({
+                          ...prev,
+                          [hole.holeNumber]: !prev[hole.holeNumber],
+                        }))
+                      }
+                    >
+                      Hole {hole.holeNumber} · {hole.totalStrokes} strokes ·{" "}
+                      {hole.totalSG >= 0 ? "+" : ""}
+                      {hole.totalSG.toFixed(2)} SG {open ? "▾" : "▸"}
+                    </button>
+                    {open && (
+                      <div className="field-gap">
+                        {hole.shots.map((shot) => {
+                          const shotKey = `${hole.holeNumber}-${shot.shotNumber}`;
+                          const expanded = Boolean(expandedShots[shotKey]);
+                          return (
+                            <div key={`shot-row-${shotKey}`} className="card">
+                              <button
+                                type="button"
+                                className="row"
+                                onClick={() =>
+                                  setExpandedShots((prev) => ({
+                                    ...prev,
+                                    [shotKey]: !prev[shotKey],
+                                  }))
+                                }
+                              >
+                                <div>
+                                  Shot {shot.shotNumber} · {shot.category}
+                                </div>
+                                <div className="muted">
+                                  {formatDistanceMeters(shot.startDistanceM, shot.startLie)} →{" "}
+                                  {formatDistanceMeters(shot.endDistanceM, shot.endLie)}
+                                </div>
+                                <div className="stat-value">
+                                  {shot.strokesGained === null
+                                    ? "SG —"
+                                    : `${shot.strokesGained >= 0 ? "+" : ""}${shot.strokesGained.toFixed(
+                                        2,
+                                      )}`}
+                                </div>
+                              </button>
+                              {expanded && (
+                                <div className="hero">
+                                  <div className="muted">
+                                    Start: {shot.startLie} ·{" "}
+                                    {formatDistanceMeters(shot.startDistanceM, shot.startLie)}
+                                  </div>
+                                  <div className="muted">
+                                    End: {shot.endLie} ·{" "}
+                                    {formatDistanceMeters(shot.endDistanceM, shot.endLie)}
+                                  </div>
+                                  {typeof shot.puttsCount === "number" && (
+                                    <div className="muted">Putts: {shot.puttsCount}</div>
+                                  )}
+                                  {shot.expectedBefore !== null && (
+                                    <div className="muted">
+                                      Expected before: {shot.expectedBefore.toFixed(3)}
+                                    </div>
+                                  )}
+                                  {shot.expectedAfter !== null && (
+                                    <div className="muted">
+                                      Expected after: {shot.expectedAfter.toFixed(3)}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </Card>
 
         {sanity && (
