@@ -4,6 +4,7 @@ import { useRouter } from "next/router";
 import type { Lie, Round, Shot } from "../../types/golf";
 import { addShot, endRound, getRound, undoLastShot } from "../../lib/storage";
 import { calculateStrokesGained } from "../../lib/strokesGained";
+import { formatGreenDistance, formatMeters } from "../../lib/expectedStrokes";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
@@ -121,29 +122,49 @@ export default function RoundPage() {
       .some((s) => s.endLie === "GREEN" && s.endDistance === 0);
   }, [round, holeNumber]);
 
-  const clampDistanceText = (value: string): string => {
-    const digits = value.replace(/\D/g, "");
-    if (digits === "") return "";
-    const n = Number.parseInt(digits, 10);
-    const clamped = Math.min(600, Math.max(0, Number.isFinite(n) ? n : 0));
-    return String(clamped);
+  const clampDistanceText = (value: string, allowDecimal: boolean): string => {
+    if (!allowDecimal) {
+      const digits = value.replace(/\D/g, "");
+      if (digits === "") return "";
+      const n = Number.parseInt(digits, 10);
+      const clamped = Math.min(600, Math.max(0, Number.isFinite(n) ? n : 0));
+      return String(clamped);
+    }
+
+    const cleaned = value.replace(/[^0-9.]/g, "");
+    if (cleaned === "") return "";
+    const parts = cleaned.split(".");
+    const whole = parts[0] ?? "";
+    const decimal = parts[1] ? parts[1].slice(0, 1) : "";
+    const normalized = decimal.length > 0 ? `${whole}.${decimal}` : whole;
+    const parsed = Number.parseFloat(normalized);
+    if (!Number.isFinite(parsed)) return "";
+    if (parsed > 600) return "600";
+    return normalized;
   };
 
-  const parseDistance = (value: string): number => {
-    const digits = value.replace(/\D/g, "");
-    if (digits === "") return 0;
-    const n = Number.parseInt(digits, 10);
-    if (!Number.isFinite(n)) return 0;
-    return Math.min(600, Math.max(0, n));
+  const parseDistance = (value: string, allowDecimal: boolean): number => {
+    if (!allowDecimal) {
+      const digits = value.replace(/\D/g, "");
+      if (digits === "") return 0;
+      const n = Number.parseInt(digits, 10);
+      if (!Number.isFinite(n)) return 0;
+      return Math.min(600, Math.max(0, n));
+    }
+    const cleaned = value.replace(/[^0-9.]/g, "");
+    if (cleaned === "") return 0;
+    const parsed = Number.parseFloat(cleaned);
+    if (!Number.isFinite(parsed)) return 0;
+    return Math.min(600, Math.max(0, parsed));
   };
 
   const startDistanceValue = useMemo(() => {
-    return parseDistance(startDistance);
-  }, [startDistance]);
+    return parseDistance(startDistance, startLie === "GREEN");
+  }, [startDistance, startLie]);
 
   const endDistanceValue = useMemo(() => {
-    return parseDistance(endDistance);
-  }, [endDistance]);
+    return parseDistance(endDistance, endLie === "GREEN");
+  }, [endDistance, endLie]);
 
   const isFirstShotOfHole = nextShotNumber === 1;
   const holeShots = useMemo(() => {
@@ -193,15 +214,6 @@ export default function RoundPage() {
     showErrors && startDistance.trim() === "" ? "Enter a start distance" : undefined;
   const endDistanceError =
     showErrors && !holed && endDistance.trim() === "" ? "Enter an end distance" : undefined;
-  const startDistanceLabel =
-    startLie === "GREEN" ? "Start distance (ft)" : "Start distance (m)";
-  const endDistanceLabel = endLie === "GREEN" ? "End distance (ft)" : "End distance (m)";
-  const startDistanceHelp = startLie === "GREEN" ? "Putting distances in feet" : undefined;
-  const endDistanceHelp = endLie === "GREEN" ? "Putting distances in feet" : undefined;
-  const startPlaceholder = startLie === "GREEN" ? "e.g. 12" : "e.g. 145";
-  const endPlaceholder = endLie === "GREEN" ? "e.g. 6" : "e.g. 20";
-  const previewStartUnit = startLie === "GREEN" ? "ft" : "m";
-  const previewEndUnit = (holed ? "GREEN" : endLie) === "GREEN" ? "ft" : "m";
   const endSuggestion =
     displayHole >= targetHoles && isHoleComplete && !roundEnded
       ? "Last hole complete — consider ending the round."
@@ -234,14 +246,17 @@ export default function RoundPage() {
     const updated = addShot(roundId, previewShot);
     if (updated) setRound(updated);
 
-    const summaryStartUnit = previewShot.startLie === "GREEN" ? "ft" : "m";
-    const summaryEndUnit = previewShot.endLie === "GREEN" ? "ft" : "m";
+    const formatByLie = (distance: number, lie: Lie) =>
+      lie === "GREEN" ? formatGreenDistance(distance) : formatMeters(distance);
     const summary =
       puttingMode && puttsCount
         ? `Last shot: ${puttsCount} putt${puttsCount === 1 ? "" : "s"}`
         : previewShot.endLie === "GREEN" && previewShot.endDistance === 0
-          ? `Last shot: ${previewShot.startDistance}${summaryStartUnit} → holed`
-          : `Last shot: ${previewShot.startDistance}${summaryStartUnit} → ${previewShot.endDistance}${summaryEndUnit}`;
+          ? `Last shot: ${formatByLie(previewShot.startDistance, previewShot.startLie)} → holed`
+          : `Last shot: ${formatByLie(previewShot.startDistance, previewShot.startLie)} → ${formatByLie(
+              previewShot.endDistance,
+              previewShot.endLie,
+            )}`;
     setLastShotSummary(summary);
     setEndDistance("");
 
@@ -419,19 +434,28 @@ export default function RoundPage() {
             >
               <div style={{ minWidth: 160, flex: "1 1 180px" }}>
                 <div className="label">
-                  {holeShots.length === 0 ? "START (m)" : `BALL AT ${currentStartDistance}m`}
+                  {holeShots.length === 0
+                    ? "START (m)"
+                    : `BALL AT ${
+                        startLie === "GREEN"
+                          ? formatGreenDistance(currentStartDistance)
+                          : formatMeters(currentStartDistance)
+                      }`}
                 </div>
                 {holeShots.length === 0 ? (
                   <label className="input-field">
                     <input
                       className="input"
                       type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={3}
-                      placeholder="e.g. 165"
+                      inputMode={startLie === "GREEN" ? "decimal" : "numeric"}
+                      pattern={startLie === "GREEN" ? "[0-9]*[.]?[0-9]*" : "[0-9]*"}
+                      step={startLie === "GREEN" ? "0.1" : undefined}
+                      maxLength={startLie === "GREEN" ? 5 : 3}
+                      placeholder={startLie === "GREEN" ? "e.g. 9.1" : "e.g. 165"}
                       value={startDistance ?? ""}
-                      onChange={(e) => setStartDistance(clampDistanceText(e.target.value))}
+                      onChange={(e) =>
+                        setStartDistance(clampDistanceText(e.target.value, startLie === "GREEN"))
+                      }
                       onFocus={() =>
                         startDistanceRef.current?.scrollIntoView({
                           behavior: "smooth",
@@ -488,12 +512,15 @@ export default function RoundPage() {
                   <input
                     className="input"
                     type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={3}
-                    placeholder="e.g. 120"
+                    inputMode={endLie === "GREEN" ? "decimal" : "numeric"}
+                    pattern={endLie === "GREEN" ? "[0-9]*[.]?[0-9]*" : "[0-9]*"}
+                    step={endLie === "GREEN" ? "0.1" : undefined}
+                    maxLength={endLie === "GREEN" ? 5 : 3}
+                    placeholder={endLie === "GREEN" ? "e.g. 12.3" : "e.g. 120"}
                     value={endDistance ?? ""}
-                    onChange={(e) => setEndDistance(clampDistanceText(e.target.value))}
+                    onChange={(e) =>
+                      setEndDistance(clampDistanceText(e.target.value, endLie === "GREEN"))
+                    }
                     onBlur={() => setSaveNudge(true)}
                     onFocus={() =>
                       endDistanceRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
@@ -626,9 +653,14 @@ export default function RoundPage() {
                     Hole {previewShot.holeNumber}, Shot {previewShot.shotNumber}
                   </div>
                   <div className="muted">
-                    {previewShot.startLie} {previewShot.startDistance}
-                    {previewStartUnit} → {previewShot.endLie} {previewShot.endDistance}
-                    {previewEndUnit}
+                    {previewShot.startLie}{" "}
+                    {previewShot.startLie === "GREEN"
+                      ? formatGreenDistance(previewShot.startDistance)
+                      : formatMeters(previewShot.startDistance)}{" "}
+                    → {previewShot.endLie}{" "}
+                    {previewShot.endLie === "GREEN"
+                      ? formatGreenDistance(previewShot.endDistance)
+                      : formatMeters(previewShot.endDistance)}
                   </div>
                   <div className="field-gap">
                     {previewSg.isValid ? (

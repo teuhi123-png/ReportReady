@@ -177,6 +177,20 @@ const PGA_BASELINE: Baseline = {
   ],
 };
 
+const M_TO_FT = 3.28084;
+
+export const metersToFeet = (m: number): number => m * M_TO_FT;
+
+export const formatMeters = (m: number | null | undefined): string => {
+  if (m == null || Number.isNaN(m)) return "";
+  return `${Math.round(m)}m`;
+};
+
+export const formatGreenDistance = (m: number | null | undefined): string => {
+  if (m == null || Number.isNaN(m)) return "";
+  return `${Number(m).toFixed(1)}m`;
+};
+
 export function baselineIsComplete(): boolean {
   return (
     PGA_BASELINE.TEE.length > 0 &&
@@ -216,7 +230,7 @@ export function getExpectedStrokes(lie: Lie, distanceM: number): number | null {
       console.warn("Missing PGA baseline table for lie: GREEN");
       return null;
     }
-    const feet = distanceM * 3.28084;
+    const feet = metersToFeet(distanceM);
     return interpolate(greenPoints, feet);
   }
 
