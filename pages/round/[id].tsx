@@ -174,6 +174,8 @@ export default function RoundPage() {
   const lastShotInHole = holeShots.length > 0 ? holeShots[holeShots.length - 1] : null;
   const currentStartDistance =
     holeShots.length > 0 ? lastShotInHole?.endDistance ?? 0 : startDistanceValue;
+  const puttingStartDistance =
+    endDistance.trim() !== "" ? endDistanceValue : lastShotInHole?.endDistance ?? 0;
 
   const endLieForShot = puttingMode
     ? "GREEN"
@@ -186,7 +188,7 @@ export default function RoundPage() {
     holeNumber,
     shotNumber: nextShotNumber,
     startLie: holeShots.length === 0 ? "TEE" : startLie,
-    startDistance: startDistanceValue,
+    startDistance: puttingMode ? puttingStartDistance : startDistanceValue,
     endLie: endLieForShot,
     endDistance: endDistanceForShot,
     penaltyStrokes,
@@ -206,14 +208,18 @@ export default function RoundPage() {
   const roundComplete = previewShot.endDistance === 0 && displayHole === targetHoles;
   const canSave =
     (holeShots.length === 0 ? startDistance.trim() !== "" : true) &&
-    (puttingMode ? puttsCount !== null : endDistance.trim() !== "");
+    (puttingMode ? endDistance.trim() !== "" && puttsCount !== null : endDistance.trim() !== "");
   const isFinalHole = holeNumber >= targetHoles;
   const finalHoleComplete = isFinalHole && isHoleComplete;
 
   const startDistanceError =
     showErrors && startDistance.trim() === "" ? "Enter a start distance" : undefined;
   const endDistanceError =
-    showErrors && !holed && endDistance.trim() === "" ? "Enter an end distance" : undefined;
+    showErrors && endDistance.trim() === ""
+      ? puttingMode
+        ? "Enter distance to hole"
+        : "Enter an end distance"
+      : undefined;
   const endSuggestion =
     displayHole >= targetHoles && isHoleComplete && !roundEnded
       ? "Last hole complete — consider ending the round."
@@ -232,6 +238,11 @@ export default function RoundPage() {
       map.set(shot.holeNumber, list);
     }
     return Array.from(map.entries());
+  }, [round]);
+
+  const totalStrokes = useMemo(() => {
+    if (!round) return 0;
+    return round.shots.reduce((sum, shot) => sum + (shot.putts ?? 1), 0);
   }, [round]);
 
   function handleSaveShot(): void {
@@ -279,7 +290,6 @@ export default function RoundPage() {
     } else {
       const nextStartLie = previewShot.endLie;
       setStartLie(nextStartLie);
-      setStartDistance(String(endDistanceValue));
       setEndLie(nextStartLie);
       setPenaltyStrokes(0);
       setHoled(false);
@@ -434,7 +444,10 @@ export default function RoundPage() {
                 <div className="label">
                   {holeShots.length === 0
                     ? "START (m)"
-                    : `BALL AT ${formatDistanceMeters(currentStartDistance, startLie)}`}
+                    : `BALL AT ${formatDistanceMeters(
+                        puttingMode ? puttingStartDistance : currentStartDistance,
+                        startLie,
+                      )}`}
                 </div>
                 {holeShots.length === 0 ? (
                   <label className="input-field">
@@ -500,34 +513,38 @@ export default function RoundPage() {
                 </div>
               )}
 
-              {!puttingMode && (
-                <label className="input-field" style={{ minWidth: 120, flex: "1 1 120px" }}>
-                  <div className="label">End (m)</div>
-                  <input
-                    className="input"
-                    type="text"
-                    inputMode={endLie === "GREEN" ? "decimal" : "numeric"}
-                    pattern={endLie === "GREEN" ? "[0-9]*[.]?[0-9]*" : "[0-9]*"}
-                    step={endLie === "GREEN" ? "0.1" : undefined}
-                    maxLength={endLie === "GREEN" ? 5 : 3}
-                    placeholder={endLie === "GREEN" ? "e.g. 12.3" : "e.g. 120"}
-                    value={endDistance ?? ""}
-                    onChange={(e) =>
-                      setEndDistance(clampDistanceText(e.target.value, endLie === "GREEN"))
-                    }
-                    onBlur={() => setSaveNudge(true)}
-                    onFocus={() =>
-                      endDistanceRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-                    }
-                    disabled={isEnded}
-                    ref={endDistanceRef}
-                    onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
-                  />
-                  {endDistanceError && <div className="error">{endDistanceError}</div>}
-                </label>
-              )}
+              <label className="input-field" style={{ minWidth: 120, flex: "1 1 120px" }}>
+                  <div className="label">
+                    {puttingMode || endLie === "GREEN" ? "Distance to hole (m)" : "End (m)"}
+                  </div>
+                <input
+                  className="input"
+                  type="text"
+                  inputMode={puttingMode || endLie === "GREEN" ? "decimal" : "numeric"}
+                  pattern={
+                    puttingMode || endLie === "GREEN" ? "[0-9]*[.]?[0-9]*" : "[0-9]*"
+                  }
+                  step={puttingMode || endLie === "GREEN" ? "0.1" : undefined}
+                  maxLength={puttingMode || endLie === "GREEN" ? 5 : 3}
+                  placeholder={puttingMode ? "e.g. 9.1" : endLie === "GREEN" ? "e.g. 12.3" : "e.g. 120"}
+                  value={endDistance ?? ""}
+                  onChange={(e) =>
+                    setEndDistance(
+                      clampDistanceText(e.target.value, puttingMode || endLie === "GREEN"),
+                    )
+                  }
+                  onBlur={() => setSaveNudge(true)}
+                  onFocus={() =>
+                    endDistanceRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+                  }
+                  disabled={isEnded}
+                  ref={endDistanceRef}
+                  onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+                />
+                {endDistanceError && <div className="error">{endDistanceError}</div>}
+              </label>
 
-              {puttingMode && (
+              {puttingMode && endDistance.trim() !== "" && (
                 <div style={{ minWidth: 200, flex: "1 1 200px" }}>
                   <div className="label">Putts</div>
                   <div className="pill-group">
@@ -539,9 +556,7 @@ export default function RoundPage() {
                         disabled={isEnded}
                         onClick={() => {
                           setPuttsCount(count);
-                          setHoled(true);
                           setEndLie("GREEN");
-                          setEndDistance("0");
                         }}
                       >
                         {count}
@@ -581,9 +596,7 @@ export default function RoundPage() {
                           const parsed = parseDistance(customPutts, false);
                           const count = Math.min(10, Math.max(4, parsed || 4));
                           setPuttsCount(count);
-                          setHoled(true);
                           setEndLie("GREEN");
-                          setEndDistance("0");
                         }}
                         disabled={isEnded}
                       >
@@ -591,6 +604,11 @@ export default function RoundPage() {
                       </Button>
                     </div>
                   )}
+                </div>
+              )}
+              {puttingMode && endDistance.trim() === "" && (
+                <div className="muted" style={{ alignSelf: "flex-end" }}>
+                  Enter distance to hole to add putts.
                 </div>
               )}
 
@@ -682,7 +700,7 @@ export default function RoundPage() {
           </Card>
         </form>
 
-        <Card title={`Shots (${round.shots.length})`}>
+        <Card title={`Shots (${totalStrokes})`}>
           <div className="muted">Shots list is available on Summary.</div>
         </Card>
       </div>

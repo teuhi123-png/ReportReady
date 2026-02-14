@@ -62,6 +62,11 @@ export default function SummaryPage() {
     return base;
   }, [round]);
 
+  const totalStrokes = useMemo(() => {
+    if (!round) return 0;
+    return round.shots.reduce((sum, shot) => sum + (shot.putts ?? 1), 0);
+  }, [round]);
+
   const totalPenalties = useMemo(() => {
     if (!round) return 0;
     return round.shots.reduce((sum, shot) => sum + (shot.penaltyStrokes || 0), 0);
@@ -69,8 +74,8 @@ export default function SummaryPage() {
 
   const adjustedScore = useMemo(() => {
     if (!round) return 0;
-    return round.shots.length + totalPenalties;
-  }, [round, totalPenalties]);
+    return totalStrokes + totalPenalties;
+  }, [round, totalPenalties, totalStrokes]);
 
   const hasInvalidBaseline = useMemo(() => {
     if (!round) return false;
@@ -145,7 +150,7 @@ export default function SummaryPage() {
     }
 
     const actualStrokesTotal =
-      round.shots.length +
+      round.shots.reduce((sum, s) => sum + (s.putts ?? 1), 0) +
       round.shots.reduce((sum, s) => sum + (s.penaltyStrokes || 0), 0);
 
     const delta = expectedFromTeeTotal - actualStrokesTotal;
@@ -188,7 +193,7 @@ export default function SummaryPage() {
     const map = new Map<number, { shots: number; penalties: number }>();
     for (const shot of round.shots) {
       const entry = map.get(shot.holeNumber) ?? { shots: 0, penalties: 0 };
-      entry.shots += 1;
+      entry.shots += shot.putts ?? 1;
       entry.penalties += shot.penaltyStrokes || 0;
       map.set(shot.holeNumber, entry);
     }
@@ -225,7 +230,7 @@ export default function SummaryPage() {
           <div>
             <div className="h1">Analysis</div>
             <div className="muted">{round.courseName || "Unnamed course"}</div>
-            <div className="muted">{created} · {round.shots.length} shots</div>
+            <div className="muted">{created} · {totalStrokes} shots</div>
           </div>
           <div className="nav-links">
             <Link href={`/round/${round.id}`} className="pill">
@@ -273,7 +278,7 @@ export default function SummaryPage() {
 
         <Card title="Score">
           <div className="hero">
-            <div className="stat-value">Score: {round.shots.length}</div>
+            <div className="stat-value">Score: {totalStrokes}</div>
             <div className="muted">Penalties: +{totalPenalties}</div>
             <div className="stat-value">Adjusted Score: {adjustedScore}</div>
           </div>
