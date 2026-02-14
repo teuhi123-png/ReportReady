@@ -208,18 +208,14 @@ export default function RoundPage() {
   const roundComplete = previewShot.endDistance === 0 && displayHole === targetHoles;
   const canSave =
     (holeShots.length === 0 ? startDistance.trim() !== "" : true) &&
-    (puttingMode ? endDistance.trim() !== "" && puttsCount !== null : endDistance.trim() !== "");
+    (puttingMode ? puttsCount !== null : endDistance.trim() !== "");
   const isFinalHole = holeNumber >= targetHoles;
   const finalHoleComplete = isFinalHole && isHoleComplete;
 
   const startDistanceError =
     showErrors && startDistance.trim() === "" ? "Enter a start distance" : undefined;
   const endDistanceError =
-    showErrors && endDistance.trim() === ""
-      ? puttingMode
-        ? "Enter distance to hole"
-        : "Enter an end distance"
-      : undefined;
+    showErrors && endDistance.trim() === "" && !puttingMode ? "Enter an end distance" : undefined;
   const endSuggestion =
     displayHole >= targetHoles && isHoleComplete && !roundEnded
       ? "Last hole complete — consider ending the round."
@@ -544,7 +540,7 @@ export default function RoundPage() {
                 {endDistanceError && <div className="error">{endDistanceError}</div>}
               </label>
 
-              {puttingMode && endDistance.trim() !== "" && (
+              {puttingMode && (
                 <div style={{ minWidth: 200, flex: "1 1 200px" }}>
                   <div className="label">Putts</div>
                   <div className="pill-group">
@@ -608,7 +604,7 @@ export default function RoundPage() {
               )}
               {puttingMode && endDistance.trim() === "" && (
                 <div className="muted" style={{ alignSelf: "flex-end" }}>
-                  Enter distance to hole to add putts.
+                  Distance to hole optional.
                 </div>
               )}
 
