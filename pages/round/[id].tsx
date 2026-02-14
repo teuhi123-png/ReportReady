@@ -25,7 +25,7 @@ export default function RoundPage() {
   const [startDistance, setStartDistance] = useState<string>("");
   const [penaltyStrokes, setPenaltyStrokes] = useState(0);
   const [holed, setHoled] = useState(false);
-  const [endLie, setEndLie] = useState<Lie>("FAIRWAY");
+  const [endLieSelection, setEndLieSelection] = useState<Lie | null>(null);
   const [endDistance, setEndDistance] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [notes, setNotes] = useState("");
@@ -62,7 +62,7 @@ export default function RoundPage() {
 
   useEffect(() => {
     if (!puttingMode) return;
-    setEndLie("GREEN");
+    setEndLieSelection(null);
   }, [puttingMode]);
 
   useEffect(() => {
@@ -163,8 +163,8 @@ export default function RoundPage() {
   }, [startDistance, startLie]);
 
   const endDistanceValue = useMemo(() => {
-    return parseDistance(endDistance, endLie === "GREEN");
-  }, [endDistance, endLie]);
+    return parseDistance(endDistance, endLieSelection === "GREEN");
+  }, [endDistance, endLieSelection]);
 
   const isFirstShotOfHole = nextShotNumber === 1;
   const holeShots = useMemo(() => {
@@ -180,8 +180,8 @@ export default function RoundPage() {
   const endLieForShot = puttingMode
     ? "GREEN"
     : holeShots.length === 0
-      ? endLie
-      : startLie;
+      ? endLieSelection ?? "FAIRWAY"
+      : endLieSelection ?? "FAIRWAY";
   const endDistanceForShot = puttingMode ? 0 : endDistanceValue;
 
   const previewShot: Shot = {
@@ -209,16 +209,21 @@ export default function RoundPage() {
     if (!round) return;
     setStartDistance("");
     setEndDistance("");
+    setStartLie("FAIRWAY");
+    setEndLieSelection(null);
     setCustomPutts("");
     setPuttsCount(null);
     setShowCustomPutts(false);
     setHoled(false);
+    setShowErrors(false);
+    setNotes("");
+    setLastShotSummary("");
   }, [holeNumber, round?.id]);
 
   const roundComplete = previewShot.endDistance === 0 && displayHole === targetHoles;
   const canSave =
     (holeShots.length === 0 ? startDistance.trim() !== "" : true) &&
-    (puttingMode ? puttsCount !== null : endDistance.trim() !== "");
+    (puttingMode ? puttsCount !== null : endDistance.trim() !== "" && endLieSelection !== null);
   const isFinalHole = holeNumber >= targetHoles;
   const finalHoleComplete = isFinalHole && isHoleComplete;
 
@@ -284,7 +289,7 @@ export default function RoundPage() {
     if (previewShot.endDistance === 0) {
       setHoleNumber((h) => Math.min(targetHoles, h + 1));
       setStartLie("TEE");
-      setEndLie("FAIRWAY");
+      setEndLieSelection(null);
       setPenaltyStrokes(0);
       setHoled(false);
       setShowAdvanced(false);
@@ -296,7 +301,7 @@ export default function RoundPage() {
     } else {
       const nextStartLie = previewShot.endLie;
       setStartLie(nextStartLie);
-      setEndLie(nextStartLie);
+      setEndLieSelection(null);
       setPenaltyStrokes(0);
       setHoled(false);
       setNotes("");
@@ -350,7 +355,7 @@ export default function RoundPage() {
     setHoleNumber((h) => Math.min(targetHoles, h + 1));
     setStartLie("TEE");
     setStartDistance("");
-    setEndLie("FAIRWAY");
+    setEndLieSelection(null);
     setEndDistance("");
     setPenaltyStrokes(0);
     setHoled(false);
@@ -453,7 +458,7 @@ export default function RoundPage() {
                     : `BALL AT ${formatDistanceMeters(
                         puttingMode ? puttingStartDistance : currentStartDistance,
                         startLie,
-                      )}`}
+                      )} · ${startLie}`}
                 </div>
                 {holeShots.length === 0 ? (
                   <label className="input-field">
@@ -488,33 +493,18 @@ export default function RoundPage() {
                     onChange={() => {}}
                     ariaLabel="Current lie"
                   />
-                ) : (
-                  <PillToggleGroup<Lie>
-                    options={LIES.map((lie) => ({ value: lie }))}
-                    value={startLie}
-                    onChange={(value) => {
-                      if (isEnded) return;
-                      setStartLie(value);
-                      startDistanceRef.current?.focus();
-                      startDistanceRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                      });
-                    }}
-                    ariaLabel="Current lie"
-                  />
-                )}
+                ) : null}
               </div>
 
-              {!puttingMode && holeShots.length === 0 && (
+              {!puttingMode && (
                 <div style={{ minWidth: 160, flex: "1 1 160px" }}>
                   <div className="label">TO</div>
                   <PillToggleGroup<Lie>
                     options={LIES.map((lie) => ({ value: lie }))}
-                    value={endLie}
+                    value={endLieSelection ?? undefined}
                     onChange={(value) => {
                       if (isEnded) return;
-                      setEndLie(value);
+                      setEndLieSelection(value);
                       endDistanceRef.current?.focus();
                       endDistanceRef.current?.scrollIntoView({
                         behavior: "smooth",
@@ -532,14 +522,14 @@ export default function RoundPage() {
                   <input
                     className="input"
                     type="text"
-                    inputMode={endLie === "GREEN" ? "decimal" : "numeric"}
-                    pattern={endLie === "GREEN" ? "[0-9]*[.]?[0-9]*" : "[0-9]*"}
-                    step={endLie === "GREEN" ? "0.1" : undefined}
-                    maxLength={endLie === "GREEN" ? 5 : 3}
-                    placeholder={endLie === "GREEN" ? "e.g. 12.3" : "e.g. 120"}
+                    inputMode={endLieSelection === "GREEN" ? "decimal" : "numeric"}
+                    pattern={endLieSelection === "GREEN" ? "[0-9]*[.]?[0-9]*" : "[0-9]*"}
+                    step={endLieSelection === "GREEN" ? "0.1" : undefined}
+                    maxLength={endLieSelection === "GREEN" ? 5 : 3}
+                    placeholder={endLieSelection === "GREEN" ? "e.g. 12.3" : "e.g. 120"}
                     value={endDistance ?? ""}
                     onChange={(e) =>
-                      setEndDistance(clampDistanceText(e.target.value, endLie === "GREEN"))
+                      setEndDistance(clampDistanceText(e.target.value, endLieSelection === "GREEN"))
                     }
                     onBlur={() => setSaveNudge(true)}
                     onFocus={() =>
@@ -568,7 +558,7 @@ export default function RoundPage() {
                         disabled={isEnded}
                         onClick={() => {
                           setPuttsCount(count);
-                          setEndLie("GREEN");
+                          setEndLieSelection("GREEN");
                           setHoled(true);
                         }}
                       >
@@ -609,7 +599,7 @@ export default function RoundPage() {
                           const parsed = parseDistance(customPutts, false);
                           const count = Math.min(10, Math.max(4, parsed || 4));
                           setPuttsCount(count);
-                          setEndLie("GREEN");
+                          setEndLieSelection("GREEN");
                           setHoled(true);
                         }}
                         disabled={isEnded}
@@ -632,7 +622,7 @@ export default function RoundPage() {
                       const next = !holed;
                       setHoled(next);
                       if (next) {
-                        setEndLie("GREEN");
+                        setEndLieSelection("GREEN");
                         setEndDistance("0");
                       }
                     }}

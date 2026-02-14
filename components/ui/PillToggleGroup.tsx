@@ -7,7 +7,7 @@ type Option<T extends string> = {
 
 type PillToggleGroupProps<T extends string> = {
   options: Option<T>[];
-  value: T;
+  value?: T;
   onChange: (value: T) => void;
   ariaLabel?: string;
 };
