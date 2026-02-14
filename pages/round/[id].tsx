@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import type { Lie, Round, Shot } from "../../types/golf";
-import { addShot, getRound, undoLastShot, updateRound } from "../../lib/storage";
+import { addShot, endRound, getRound, undoLastShot } from "../../lib/storage";
 import { calculateStrokesGained } from "../../lib/strokesGained";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -114,6 +114,7 @@ export default function RoundPage() {
   const roundComplete = holed && displayHole === targetHoles;
   const canSave = startDistance.trim() !== "" && (holed || endDistance.trim() !== "");
   const roundEnded = Boolean(round?.endedAt);
+  const isEnded = roundEnded;
 
   const startDistanceError =
     showErrors && startDistance.trim() === "" ? "Enter a start distance" : undefined;
@@ -200,12 +201,11 @@ export default function RoundPage() {
   }
 
   function confirmEndRound(): void {
-    if (!round) return;
-    const updated: Round = { ...round, endedAt: Date.now() };
-    updateRound(updated);
-    setRound(updated);
+    if (!roundId) return;
+    const updated = endRound(roundId);
+    if (updated) setRound(updated);
     setShowEndRoundModal(false);
-    void router.push(`/summary/${round.id}`);
+    void router.push(`/summary/${roundId}`);
   }
 
   if (!round) {
@@ -233,26 +233,36 @@ export default function RoundPage() {
               <Link href={`/summary/${round.id}`} className="pill">
                 Summary
               </Link>
-              <button type="button" className="pill" onClick={handleEndRound}>
-                End round
-              </button>
+              {isEnded ? (
+                <Link href={`/summary/${round.id}`} className="pill">
+                  View summary
+                </Link>
+              ) : (
+                <button type="button" className="pill" onClick={handleEndRound}>
+                  End round
+                </button>
+              )}
             </div>
           </div>
         </div>
 
         <div className="container">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSaveShot();
-            }}
-          >
-            <Card title="Beginner mode" subtitle="Quick, guided shot entry">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSaveShot();
+          }}
+        >
+          <Card title="Beginner mode" subtitle="Quick, guided shot entry">
             <div className="hero">
+              {isEnded && (
+                <div className="muted">Round complete. View summary for insights.</div>
+              )}
               <div className="stepper">
                 <Button
                   type="button"
                   variant="secondary"
+                  disabled={isEnded}
                   onClick={() => setHoleNumber((h) => Math.max(1, h - 1))}
                 >
                   −
@@ -261,6 +271,7 @@ export default function RoundPage() {
                 <Button
                   type="button"
                   variant="secondary"
+                  disabled={isEnded}
                   onClick={() => setHoleNumber((h) => Math.min(targetHoles, h + 1))}
                 >
                   +
@@ -272,7 +283,10 @@ export default function RoundPage() {
                 <PillToggleGroup<Lie>
                   options={LIES.map((lie) => ({ value: lie }))}
                   value={startLie}
-                  onChange={setStartLie}
+                  onChange={(value) => {
+                    if (isEnded) return;
+                    setStartLie(value);
+                  }}
                   ariaLabel="Start lie"
                 />
                 <div className="field-gap">
@@ -287,6 +301,7 @@ export default function RoundPage() {
                       placeholder="e.g. 145"
                       value={startDistance ?? ""}
                       onChange={(e) => setStartDistance(clampDistanceText(e.target.value))}
+                      disabled={isEnded}
                       ref={startDistanceRef}
                       onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
                     />
@@ -305,6 +320,7 @@ export default function RoundPage() {
                     options={LIES.map((lie) => ({ value: lie }))}
                     value={holed ? "GREEN" : endLie}
                     onChange={(value) => {
+                      if (isEnded) return;
                       setEndLie(value);
                       if (holed) setHoled(false);
                     }}
@@ -326,6 +342,7 @@ export default function RoundPage() {
                         placeholder="e.g. 120"
                         value={endDistance ?? ""}
                         onChange={(e) => setEndDistance(clampDistanceText(e.target.value))}
+                        disabled={isEnded}
                         ref={endDistanceRef}
                         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
                       />
@@ -342,6 +359,7 @@ export default function RoundPage() {
                       type="button"
                       className={`pill pill-cta ${holed ? "active" : ""}`.trim()}
                       aria-pressed={holed}
+                      disabled={isEnded}
                       onClick={() => {
                         const next = !holed;
                         setHoled(next);
@@ -364,6 +382,7 @@ export default function RoundPage() {
                       type="button"
                       className={`pill ${holed ? "active" : ""}`.trim()}
                       aria-pressed={holed}
+                      disabled={isEnded}
                       onClick={() => {
                         const next = !holed;
                         setHoled(next);
@@ -387,6 +406,7 @@ export default function RoundPage() {
                   <button
                     type="button"
                     className={`pill ${penaltyStrokes === 0 ? "active" : ""}`.trim()}
+                    disabled={isEnded}
                     onClick={() => setPenaltyStrokes(0)}
                   >
                     0
@@ -394,6 +414,7 @@ export default function RoundPage() {
                   <button
                     type="button"
                     className={`pill ${penaltyStrokes === 1 ? "active" : ""}`.trim()}
+                    disabled={isEnded}
                     onClick={() => setPenaltyStrokes(1)}
                   >
                     +1
@@ -401,6 +422,7 @@ export default function RoundPage() {
                   <button
                     type="button"
                     className={`pill ${penaltyStrokes === 2 ? "active" : ""}`.trim()}
+                    disabled={isEnded}
                     onClick={() => setPenaltyStrokes(2)}
                   >
                     +2
@@ -414,6 +436,7 @@ export default function RoundPage() {
                 type="button"
                 onClick={() => setShowAdvanced(!showAdvanced)}
                 className="pill"
+                disabled={isEnded}
               >
                 {showAdvanced ? "Hide more options" : "More options"}
               </button>
@@ -429,6 +452,7 @@ export default function RoundPage() {
                     placeholder="Optional notes about the shot"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
+                    disabled={isEnded}
                   />
                 </label>
                 <div>
@@ -453,15 +477,23 @@ export default function RoundPage() {
             )}
 
             <div className="action-bar field-gap">
-              <Button
-                type="submit"
-                disabled={roundComplete || !canSave || isHoleComplete || roundEnded}
-              >
-                Save shot
-              </Button>
-              <Button type="button" variant="secondary" onClick={handleUndo}>
-                Undo last shot
-              </Button>
+              {isEnded ? (
+                <Link href={`/summary/${round.id}`} className="pill">
+                  View summary
+                </Link>
+              ) : (
+                <>
+                  <Button
+                    type="submit"
+                    disabled={roundComplete || !canSave || isHoleComplete || roundEnded}
+                  >
+                    Save shot
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={handleUndo}>
+                    Undo last shot
+                  </Button>
+                </>
+              )}
               {(roundComplete || roundEnded) && <div className="muted">Round complete</div>}
             </div>
             {isHoleComplete && (
@@ -561,16 +593,24 @@ export default function RoundPage() {
       </div>
 
       <div className="mobile-action-bar">
-        <Button type="button" variant="secondary" onClick={handleUndo}>
-          Undo last shot
-        </Button>
-        <Button
-          type="button"
-          onClick={handleSaveShot}
-          disabled={roundComplete || !canSave || isHoleComplete || roundEnded}
-        >
-          Save shot
-        </Button>
+        {isEnded ? (
+          <Link href={`/summary/${round.id}`} className="pill">
+            View summary
+          </Link>
+        ) : (
+          <>
+            <Button type="button" variant="secondary" onClick={handleUndo}>
+              Undo last shot
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSaveShot}
+              disabled={roundComplete || !canSave || isHoleComplete || roundEnded}
+            >
+              Save shot
+            </Button>
+          </>
+        )}
       </div>
 
       {showEndRoundModal && (

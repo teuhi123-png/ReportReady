@@ -151,6 +151,17 @@ export function clearRounds(): void {
   window.localStorage.removeItem(STORAGE_KEY);
 }
 
+export function endRound(roundId: string): Round | undefined {
+  const rounds = loadRounds();
+  const idx = rounds.findIndex((r) => r.id === roundId);
+  if (idx === -1) return undefined;
+  const round = rounds[idx];
+  const updated: Round = { ...round, endedAt: Date.now() };
+  rounds[idx] = updated;
+  persistRounds(rounds);
+  return updated;
+}
+
 export function exportRounds(): string {
   const rounds = loadRounds();
   return JSON.stringify(rounds, null, 2);
