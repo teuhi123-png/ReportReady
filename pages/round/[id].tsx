@@ -4,7 +4,7 @@ import { useRouter } from "next/router";
 import type { Lie, Round, Shot } from "../../types/golf";
 import { addShot, endRound, getRound, undoLastShot } from "../../lib/storage";
 import { calculateStrokesGained } from "../../lib/strokesGained";
-import { formatGreenDistance, formatMeters } from "../../lib/expectedStrokes";
+import { formatDistanceMeters } from "../../lib/expectedStrokes";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
 import Input from "../../components/ui/Input";
@@ -246,17 +246,15 @@ export default function RoundPage() {
     const updated = addShot(roundId, previewShot);
     if (updated) setRound(updated);
 
-    const formatByLie = (distance: number, lie: Lie) =>
-      lie === "GREEN" ? formatGreenDistance(distance) : formatMeters(distance);
     const summary =
       puttingMode && puttsCount
         ? `Last shot: ${puttsCount} putt${puttsCount === 1 ? "" : "s"}`
         : previewShot.endLie === "GREEN" && previewShot.endDistance === 0
-          ? `Last shot: ${formatByLie(previewShot.startDistance, previewShot.startLie)} → holed`
-          : `Last shot: ${formatByLie(previewShot.startDistance, previewShot.startLie)} → ${formatByLie(
-              previewShot.endDistance,
-              previewShot.endLie,
-            )}`;
+          ? `Last shot: ${formatDistanceMeters(previewShot.startDistance, previewShot.startLie)} → holed`
+          : `Last shot: ${formatDistanceMeters(
+              previewShot.startDistance,
+              previewShot.startLie,
+            )} → ${formatDistanceMeters(previewShot.endDistance, previewShot.endLie)}`;
     setLastShotSummary(summary);
     setEndDistance("");
 
@@ -436,11 +434,7 @@ export default function RoundPage() {
                 <div className="label">
                   {holeShots.length === 0
                     ? "START (m)"
-                    : `BALL AT ${
-                        startLie === "GREEN"
-                          ? formatGreenDistance(currentStartDistance)
-                          : formatMeters(currentStartDistance)
-                      }`}
+                    : `BALL AT ${formatDistanceMeters(currentStartDistance, startLie)}`}
                 </div>
                 {holeShots.length === 0 ? (
                   <label className="input-field">
@@ -654,13 +648,9 @@ export default function RoundPage() {
                   </div>
                   <div className="muted">
                     {previewShot.startLie}{" "}
-                    {previewShot.startLie === "GREEN"
-                      ? formatGreenDistance(previewShot.startDistance)
-                      : formatMeters(previewShot.startDistance)}{" "}
-                    → {previewShot.endLie}{" "}
-                    {previewShot.endLie === "GREEN"
-                      ? formatGreenDistance(previewShot.endDistance)
-                      : formatMeters(previewShot.endDistance)}
+                    {formatDistanceMeters(previewShot.startDistance, previewShot.startLie)} →{" "}
+                    {previewShot.endLie}{" "}
+                    {formatDistanceMeters(previewShot.endDistance, previewShot.endLie)}
                   </div>
                   <div className="field-gap">
                     {previewSg.isValid ? (

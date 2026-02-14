@@ -181,14 +181,10 @@ const M_TO_FT = 3.28084;
 
 export const metersToFeet = (m: number): number => m * M_TO_FT;
 
-export const formatMeters = (m: number | null | undefined): string => {
+export const formatDistanceMeters = (m: number | null | undefined, lie?: Lie): string => {
   if (m == null || Number.isNaN(m)) return "";
+  if (lie === "GREEN") return `${Number(m).toFixed(1)}m`;
   return `${Math.round(m)}m`;
-};
-
-export const formatGreenDistance = (m: number | null | undefined): string => {
-  if (m == null || Number.isNaN(m)) return "";
-  return `${Number(m).toFixed(1)}m`;
 };
 
 export function baselineIsComplete(): boolean {

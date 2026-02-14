@@ -1,7 +1,8 @@
 import type { Round, Shot } from "../types/golf";
 
 const STORAGE_KEY = "strokes-gained-rounds";
-const MIGRATION_KEY = "strokes-gained-green-feet-v1";
+const MIGRATION_KEY_GREEN_FEET = "strokes-gained-green-feet-v1";
+const MIGRATION_KEY_GREEN_METERS = "strokes-gained-green-meters-v1";
 
 function normalizeRound(round: Round): Round {
   const createdAt =
@@ -38,11 +39,16 @@ function safeParse(json: string | null): Round[] {
   }
 }
 
-function migrateGreenFeetIfNeeded(rounds: Round[]): Round[] {
+function migrateGreenFeetToMetersIfNeeded(rounds: Round[]): Round[] {
   if (typeof window === "undefined") return rounds;
-  if (window.localStorage.getItem(MIGRATION_KEY)) return rounds;
+  if (window.localStorage.getItem(MIGRATION_KEY_GREEN_METERS)) return rounds;
   if (rounds.length === 0) {
-    window.localStorage.setItem(MIGRATION_KEY, "1");
+    window.localStorage.setItem(MIGRATION_KEY_GREEN_METERS, "1");
+    return rounds;
+  }
+
+  if (!window.localStorage.getItem(MIGRATION_KEY_GREEN_FEET)) {
+    window.localStorage.setItem(MIGRATION_KEY_GREEN_METERS, "1");
     return rounds;
   }
 
@@ -51,11 +57,11 @@ function migrateGreenFeetIfNeeded(rounds: Round[]): Round[] {
     shots: (round.shots ?? []).map((shot) => {
       const startDistance =
         shot.startLie === "GREEN"
-          ? (shot.startDistance ?? 0) * 3.28084
+          ? (shot.startDistance ?? 0) / 3.28084
           : shot.startDistance ?? 0;
       const endDistance =
         shot.endLie === "GREEN"
-          ? (shot.endDistance ?? 0) * 3.28084
+          ? (shot.endDistance ?? 0) / 3.28084
           : shot.endDistance ?? 0;
       return {
         ...shot,
@@ -66,14 +72,15 @@ function migrateGreenFeetIfNeeded(rounds: Round[]): Round[] {
   }));
 
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(converted));
-  window.localStorage.setItem(MIGRATION_KEY, "1");
+  window.localStorage.setItem(MIGRATION_KEY_GREEN_METERS, "1");
+  window.localStorage.removeItem(MIGRATION_KEY_GREEN_FEET);
   return converted;
 }
 
 function loadRounds(): Round[] {
   if (typeof window === "undefined") return [];
   const rounds = safeParse(window.localStorage.getItem(STORAGE_KEY));
-  return migrateGreenFeetIfNeeded(rounds);
+  return migrateGreenFeetToMetersIfNeeded(rounds);
 }
 
 function persistRounds(rounds: Round[]): void {
