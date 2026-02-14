@@ -35,7 +35,8 @@ export default function RoundPage() {
   const [customPutts, setCustomPutts] = useState<string>("");
   const [puttsCount, setPuttsCount] = useState<number | null>(null);
   const [saveNudge, setSaveNudge] = useState(false);
-  const puttingMode = endLie === "GREEN" || startLie === "GREEN";
+  const puttingMode = startLie === "GREEN";
+  const endLieGreen = holed || endLie === "GREEN";
 
   const startDistanceRef = useRef<HTMLInputElement>(null);
   const endDistanceRef = useRef<HTMLInputElement>(null);
@@ -85,15 +86,21 @@ export default function RoundPage() {
 
   useEffect(() => {
     if (isEnded) return;
-    if (!puttingMode) startDistanceRef.current?.focus();
+    if (!puttingMode) {
+      const el = startDistanceRef.current;
+      el?.focus();
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   }, [startLie, puttingMode, isEnded]);
 
   useEffect(() => {
     if (isEnded) return;
-    if (endLie !== "GREEN" && !puttingMode) {
-      endDistanceRef.current?.focus();
+    if (!endLieGreen && !puttingMode) {
+      const el = endDistanceRef.current;
+      el?.focus();
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
-  }, [endLie, puttingMode, isEnded]);
+  }, [endLieGreen, puttingMode, isEnded]);
 
   useEffect(() => {
     if (!saveNudge) return;
@@ -146,7 +153,7 @@ export default function RoundPage() {
     endLie: holed ? "GREEN" : endLie,
     endDistance: holed ? 0 : endDistanceValue,
     penaltyStrokes,
-    putts: puttingMode && puttsCount ? puttsCount : undefined,
+    putts: (puttingMode || endLieGreen) && puttsCount ? puttsCount : undefined,
   };
 
   const previewSg = useMemo(() => calculateStrokesGained(previewShot), [previewShot]);
@@ -162,7 +169,7 @@ export default function RoundPage() {
   const roundComplete = holed && displayHole === targetHoles;
   const canSave =
     startDistance.trim() !== "" &&
-    (puttingMode ? puttsCount !== null : holed || endDistance.trim() !== "");
+    ((puttingMode || endLieGreen) ? puttsCount !== null : holed || endDistance.trim() !== "");
   const isFinalHole = holeNumber >= targetHoles;
   const finalHoleComplete = isFinalHole && isHoleComplete;
 
@@ -401,7 +408,7 @@ export default function RoundPage() {
               }}
             >
               <div style={{ minWidth: 160, flex: "1 1 180px" }}>
-                <div className="label">From</div>
+                <div className="label">FROM → TO</div>
                 <PillToggleGroup<Lie>
                   options={LIES.map((lie) => ({ value: lie }))}
                   value={startLie}
@@ -426,6 +433,9 @@ export default function RoundPage() {
                     placeholder="e.g. 145"
                     value={startDistance ?? ""}
                     onChange={(e) => setStartDistance(clampDistanceText(e.target.value))}
+                    onFocus={() =>
+                      startDistanceRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+                    }
                     disabled={isEnded}
                     ref={startDistanceRef}
                     onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
@@ -435,7 +445,7 @@ export default function RoundPage() {
               )}
 
               <div style={{ minWidth: 160, flex: "1 1 160px" }}>
-                <div className="label">Result</div>
+                <div className="label">TO</div>
                 <PillToggleGroup<Lie>
                   options={LIES.map((lie) => ({ value: lie }))}
                   value={holed ? "GREEN" : endLie}
@@ -454,7 +464,7 @@ export default function RoundPage() {
                 />
               </div>
 
-              {!puttingMode && !holed && (
+              {!puttingMode && !endLieGreen && (
                 <label className="input-field" style={{ minWidth: 120, flex: "1 1 120px" }}>
                   <div className="label">End (m)</div>
                   <input
@@ -467,6 +477,9 @@ export default function RoundPage() {
                     value={endDistance ?? ""}
                     onChange={(e) => setEndDistance(clampDistanceText(e.target.value))}
                     onBlur={() => setSaveNudge(true)}
+                    onFocus={() =>
+                      endDistanceRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+                    }
                     disabled={isEnded}
                     ref={endDistanceRef}
                     onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
@@ -475,7 +488,7 @@ export default function RoundPage() {
                 </label>
               )}
 
-              {puttingMode && (
+              {(puttingMode || endLieGreen) && (
                 <div style={{ minWidth: 200, flex: "1 1 200px" }}>
                   <div className="label">Putts</div>
                   <div className="pill-group">
@@ -610,64 +623,7 @@ export default function RoundPage() {
               </div>
             )}
 
-            <div className="action-bar field-gap">
-              {isEnded ? (
-                <Link href={`/summary/${round.id}`} className="pill">
-                  View summary
-                </Link>
-              ) : finalHoleComplete ? (
-                <>
-                  <Button type="button" onClick={handleEndRound}>
-                    Finish round
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={handleUndo}>
-                    Undo last shot
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <div className="pill-group">
-                    <button
-                      type="button"
-                      className={`pill ${penaltyStrokes === 0 ? "active" : ""}`.trim()}
-                      disabled={isEnded}
-                      onClick={() => setPenaltyStrokes(0)}
-                    >
-                      P0
-                    </button>
-                    <button
-                      type="button"
-                      className={`pill ${penaltyStrokes === 1 ? "active" : ""}`.trim()}
-                      disabled={isEnded}
-                      onClick={() => setPenaltyStrokes(1)}
-                    >
-                      P+1
-                    </button>
-                    <button
-                      type="button"
-                      className={`pill ${penaltyStrokes === 2 ? "active" : ""}`.trim()}
-                      disabled={isEnded}
-                      onClick={() => setPenaltyStrokes(2)}
-                    >
-                      P+2
-                    </button>
-                  </div>
-                  <Button
-                    type="submit"
-                    disabled={roundComplete || !canSave || isHoleComplete || roundEnded}
-                  >
-                    Save shot
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={handleUndo}>
-                    Undo last shot
-                  </Button>
-                  <Button type="button" variant="secondary" onClick={handleEndRound}>
-                    End round
-                  </Button>
-                </>
-              )}
-              {(roundComplete || roundEnded) && <div className="muted">Round complete</div>}
-            </div>
+            {(roundComplete || roundEnded) && <div className="muted">Round complete</div>}
             {isHoleComplete && (
               <div className="field-gap">
                 <div className="muted">Hole complete. Move to the next hole.</div>
@@ -684,95 +640,8 @@ export default function RoundPage() {
           </Card>
         </form>
 
-        <Card
-          title={`Shots (${round.shots.length})`}
-          headerRight={
-            <button
-              type="button"
-              className="pill"
-              aria-expanded={shotsExpanded}
-              onClick={() => setShotsExpanded((v) => !v)}
-            >
-              {shotsExpanded ? "Hide shots" : `Show shots (${round.shots.length})`}
-            </button>
-          }
-        >
-          {shotsExpanded ? (
-            <div className="shot-list" style={{ maxHeight: "30vh", overflowY: "auto" }}>
-              {shotsByHole.map(([hole, shots], idx) => (
-                <div key={`hole-${hole}`} className={idx === 0 ? "" : "shot-group"}>
-                  {(() => {
-                    const holePenalty = shots.reduce(
-                      (sum, s) => sum + (s.penaltyStrokes || 0),
-                      0,
-                    );
-                    const holeLabel =
-                      holePenalty > 0
-                        ? `Hole ${hole} (${shots.length} +${holePenalty})`
-                        : `Hole ${hole} (${shots.length} shots)`;
-                    return (
-                  <button
-                    type="button"
-                    className="hole-toggle"
-                    onClick={() =>
-                      setExpandedHoles((prev) => ({
-                        ...prev,
-                        [hole]: !prev[hole],
-                      }))
-                    }
-                    aria-expanded={expandedHoles[hole] ?? false}
-                  >
-                    {holeLabel}{" "}
-                    <span className="muted">{expandedHoles[hole] ? "▼" : "▶"}</span>
-                  </button>
-                    );
-                  })()}
-                  {(expandedHoles[hole] ?? false) && (
-                    <div className="shot-list">
-                      {shots.map((shot) => {
-                        const { sg, category, isValid } = calculateStrokesGained(shot);
-                        const startUnit = shot.startLie === "GREEN" ? "ft" : "m";
-                        const endUnit = shot.endLie === "GREEN" ? "ft" : "m";
-                        return (
-                          <div
-                            key={`${shot.holeNumber}-${shot.shotNumber}`}
-                            className="shot-row score-row"
-                          >
-                            <div>
-                              <div className="score-line">
-                                {shot.startLie} → {shot.endLie}
-                              </div>
-                              <div className="muted">
-                                {shot.startDistance}
-                                {startUnit} → {shot.endDistance}
-                                {endUnit}
-                              </div>
-                            </div>
-                            <div className="score-meta">
-                              {shot.penaltyStrokes > 0 && (
-                                <span className="muted">Penalty +{shot.penaltyStrokes}</span>
-                              )}
-                              {isValid && sg !== null ? (
-                                <>
-                                  <StatChip value={sg} decimals={2} />
-                                  <span className="chip">{category}</span>
-                                </>
-                              ) : (
-                                <span className="muted">SG: —</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))}
-              {round.shots.length === 0 && <div className="muted">No shots yet.</div>}
-            </div>
-          ) : (
-            <div className="muted">Tap to expand shot list.</div>
-          )}
+        <Card title={`Shots (${round.shots.length})`}>
+          <div className="muted">Shots list is available on Summary.</div>
         </Card>
       </div>
 
@@ -815,9 +684,6 @@ export default function RoundPage() {
             <Button type="button" onClick={handleEndRound}>
               Finish round
             </Button>
-            <Button type="button" variant="secondary" onClick={handleUndo}>
-              Undo last shot
-            </Button>
           </>
         ) : (
           <>
@@ -847,9 +713,6 @@ export default function RoundPage() {
                 P+2
               </button>
             </div>
-            <Button type="button" variant="secondary" onClick={handleUndo}>
-              Undo last shot
-            </Button>
             <Button
               type="button"
               onClick={handleSaveShot}
@@ -857,9 +720,6 @@ export default function RoundPage() {
               className={saveNudge ? "save-nudge" : undefined}
             >
               Save shot
-            </Button>
-            <Button type="button" variant="secondary" onClick={handleEndRound}>
-              End round
             </Button>
           </>
         )}
@@ -869,21 +729,28 @@ export default function RoundPage() {
         <div className="modal-backdrop">
           <div className="modal">
             <div className="modal-body">
-              <div className="h2">End round?</div>
-              <div className="muted">You won’t be able to add more shots.</div>
+              {finalHoleComplete ? (
+                <>
+                  <div className="h2">Round Complete 🎉</div>
+                  <div className="muted">Nice work — review your summary.</div>
+                </>
+              ) : (
+                <>
+                  <div className="h2">End round?</div>
+                  <div className="muted">You won’t be able to add more shots.</div>
+                </>
+              )}
             </div>
             <div className="modal-footer">
-              {(() => {
-                console.log("EndRoundModal footer rendered");
-                return null;
-              })()}
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => setShowEndRoundModal(false)}
-              >
-                Cancel
-              </Button>
+              {!finalHoleComplete && (
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => setShowEndRoundModal(false)}
+                >
+                  Cancel
+                </Button>
+              )}
               <Button type="button" onClick={confirmEndRound}>
                 View summary
               </Button>
