@@ -236,6 +236,7 @@ export default function RoundPage() {
           ? `Last shot: ${previewShot.startDistance}${summaryStartUnit} → holed`
           : `Last shot: ${previewShot.startDistance}${summaryStartUnit} → ${previewShot.endDistance}${summaryEndUnit}`;
     setLastShotSummary(summary);
+    setEndDistance("");
 
     if (previewShot.endDistance === 0 && isFinalHole) {
       setShowEndRoundModal(true);
@@ -266,11 +267,7 @@ export default function RoundPage() {
       setPuttsCount(null);
       setShowCustomPutts(false);
       setCustomPutts("");
-      if (nextStartLie === "GREEN") {
-        endDistanceRef.current?.focus();
-      } else {
-        startDistanceRef.current?.focus();
-      }
+      endDistanceRef.current?.focus();
     }
     setShowErrors(false);
   }
