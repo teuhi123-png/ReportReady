@@ -27,7 +27,9 @@ function useVisualViewportKeyboardOffset(): void {
       }
       const viewportHeight = root.clientHeight;
       const overlap = Math.max(0, viewportHeight - vv.height - vv.offsetTop) + 12;
-      root.style.setProperty("--kb", `${overlap}px`);
+      const extraLift = 56;
+      const totalLift = overlap + extraLift;
+      root.style.setProperty("--kb", `${totalLift}px`);
     };
 
     update();
