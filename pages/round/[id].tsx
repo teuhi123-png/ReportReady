@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { createPortal } from "react-dom";
@@ -49,7 +50,8 @@ export default function RoundPage() {
   const [penaltyStrokes, setPenaltyStrokes] = useState(0);
   const [holed, setHoled] = useState(false);
   const [endLieSelection, setEndLieSelection] = useState<Lie | null>(null);
-  const [endDistance, setEndDistance] = useState<string>("");
+  const [endDistanceText, setEndDistanceText] = useState<string>("");
+  const [endDistanceValue, setEndDistanceValue] = useState<number | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [notes, setNotes] = useState("");
   const [showErrors, setShowErrors] = useState(false);
@@ -69,8 +71,7 @@ export default function RoundPage() {
   const baselineViewportHeightRef = useRef<number>(0);
   const [shotsExpanded, setShotsExpanded] = useState(false);
   const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardOffsetPx, setKeyboardOffsetPx] = useState(0);
 
   const roundEnded = Boolean(round?.endedAt);
   const isEnded = roundEnded;
@@ -108,12 +109,11 @@ export default function RoundPage() {
       const visualViewportOffset = vv
         ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
         : 0;
-      const rawKeyboardHeight = Math.max(innerHeightOffset, visualViewportOffset);
-      const visible = rawKeyboardHeight > 0;
+      const rawKeyboardOffset = Math.max(innerHeightOffset, visualViewportOffset);
+      const visible = rawKeyboardOffset > 0;
       // iOS virtual keyboard accessory area can overlap fixed footers; keep a safety gap.
       const iosAccessoryPadding = visible && isIOS ? 44 : 0;
-      setKeyboardVisible(visible);
-      setKeyboardHeight(visible ? rawKeyboardHeight + iosAccessoryPadding : 0);
+      setKeyboardOffsetPx(visible ? rawKeyboardOffset + iosAccessoryPadding : 0);
     };
 
     update();
@@ -214,10 +214,6 @@ export default function RoundPage() {
     return parseDistance(startDistance, startLie === "GREEN");
   }, [startDistance, startLie]);
 
-  const endDistanceValue = useMemo(() => {
-    return parseDistance(endDistance, endLieSelection === "GREEN");
-  }, [endDistance, endLieSelection]);
-
   const isFirstShotOfHole = nextShotNumber === 1;
   const holeShots = useMemo(() => {
     if (!round) return [];
@@ -227,14 +223,14 @@ export default function RoundPage() {
   const currentStartDistance =
     holeShots.length > 0 ? lastShotInHole?.endDistance ?? 0 : startDistanceValue;
   const puttingStartDistance =
-    endDistance.trim() !== "" ? endDistanceValue : lastShotInHole?.endDistance ?? 0;
+    endDistanceValue !== null ? endDistanceValue : lastShotInHole?.endDistance ?? 0;
 
   const endLieForShot = puttingMode
     ? "GREEN"
     : holeShots.length === 0
       ? endLieSelection ?? "FAIRWAY"
       : endLieSelection ?? "FAIRWAY";
-  const endDistanceForShot = puttingMode ? 0 : endDistanceValue;
+  const endDistanceForShot = puttingMode ? 0 : (endDistanceValue ?? 0);
 
   const previewShot: Shot = {
     holeNumber,
@@ -288,7 +284,8 @@ export default function RoundPage() {
       setStartLie("TEE");
       setStartDistance("");
     }
-    setEndDistance("");
+    setEndDistanceText("");
+    setEndDistanceValue(null);
     setEndLieSelection(null);
     setCustomPutts("");
     setPuttsCount(null);
@@ -302,14 +299,14 @@ export default function RoundPage() {
   const roundComplete = previewShot.endDistance === 0 && displayHole === targetHoles;
   const canSave =
     (holeShots.length === 0 ? startDistance.trim() !== "" : true) &&
-    (puttingMode ? puttsCount !== null : endDistance.trim() !== "" && endLieSelection !== null);
+    (puttingMode ? puttsCount !== null : endDistanceValue !== null && endLieSelection !== null);
   const isFinalHole = holeNumber >= targetHoles;
   const finalHoleComplete = isFinalHole && isHoleComplete;
 
   const startDistanceError =
     showErrors && startDistance.trim() === "" ? "Enter a start distance" : undefined;
   const endDistanceError =
-    showErrors && endDistance.trim() === "" && !puttingMode ? "Enter an end distance" : undefined;
+    showErrors && endDistanceValue === null && !puttingMode ? "Enter an end distance" : undefined;
   const endSuggestion =
     displayHole >= targetHoles && isHoleComplete && !roundEnded
       ? "Last hole complete — consider ending the round."
@@ -357,7 +354,8 @@ export default function RoundPage() {
               previewShot.startLie,
             )} → ${formatDistanceMeters(previewShot.endDistance, previewShot.endLie)}`;
     setLastShotSummary(summary);
-    setEndDistance("");
+    setEndDistanceText("");
+    setEndDistanceValue(null);
 
     if (previewShot.endDistance === 0 && isFinalHole) {
       setShowEndRoundModal(true);
@@ -435,7 +433,8 @@ export default function RoundPage() {
     setStartLie("TEE");
     setStartDistance("");
     setEndLieSelection(null);
-    setEndDistance("");
+    setEndDistanceText("");
+    setEndDistanceValue(null);
     setPenaltyStrokes(0);
     setHoled(false);
     setShowAdvanced(false);
@@ -457,7 +456,6 @@ export default function RoundPage() {
         position: "fixed",
         left: 0,
         right: 0,
-        bottom: keyboardVisible ? `${keyboardHeight}px` : "env(safe-area-inset-bottom)",
         zIndex: 999,
         pointerEvents: "auto",
       }}
@@ -527,6 +525,10 @@ export default function RoundPage() {
                 P+2
               </button>
             </div>
+            <div className="muted">
+              debug: canSave={String(canSave)} · endDistance={String(endDistanceValue)} · toLie=
+              {endLieSelection ?? "null"}
+            </div>
             <Button
               type="button"
               onClick={handleSaveShot}
@@ -542,7 +544,10 @@ export default function RoundPage() {
   );
 
   return (
-      <div className="page mobile-action-spacer">
+      <div
+        className="page mobile-action-spacer"
+        style={{ "--kb-offset": `${keyboardOffsetPx}px` } as CSSProperties}
+      >
       <div className="round-main-content">
         <div className="top-header">
           <div className="top-row container header-wrap">
@@ -581,7 +586,7 @@ export default function RoundPage() {
         <div
           className="container"
           style={{
-            paddingBottom: 140 + keyboardHeight,
+            paddingBottom: 140 + keyboardOffsetPx,
           }}
         >
         <form
@@ -714,10 +719,19 @@ export default function RoundPage() {
                     step={endLieSelection === "GREEN" ? "0.1" : undefined}
                     maxLength={endLieSelection === "GREEN" ? 5 : 3}
                     placeholder={endLieSelection === "GREEN" ? "e.g. 12.3" : "e.g. 120"}
-                    value={endDistance ?? ""}
-                    onChange={(e) =>
-                      setEndDistance(clampDistanceText(e.target.value, endLieSelection === "GREEN"))
-                    }
+                    value={endDistanceText ?? ""}
+                    onChange={(e) => {
+                      const digitsOnly = e.target.value.replace(/\D/g, "");
+                      if (digitsOnly === "") {
+                        setEndDistanceText("");
+                        setEndDistanceValue(null);
+                        return;
+                      }
+                      const parsed = Number.parseInt(digitsOnly, 10);
+                      const clamped = Math.min(600, Math.max(0, Number.isFinite(parsed) ? parsed : 0));
+                      setEndDistanceText(String(clamped));
+                      setEndDistanceValue(clamped);
+                    }}
                     onBlur={() => setSaveNudge(true)}
                     onFocus={() =>
                       endDistanceRef.current?.scrollIntoView({
@@ -815,7 +829,8 @@ export default function RoundPage() {
                       setHoled(next);
                       if (next) {
                         setEndLieSelection("GREEN");
-                        setEndDistance("0");
+                        setEndDistanceText("0");
+                        setEndDistanceValue(0);
                       }
                     }}
                   >
