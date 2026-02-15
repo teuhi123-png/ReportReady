@@ -8,6 +8,7 @@ import { baselineIsComplete, formatDistanceMeters, getExpectedStrokes } from "..
 import Card from "../../components/ui/Card";
 import StatChip from "../../components/ui/StatChip";
 import { buildRoundBreakdown } from "../../lib/roundBreakdown";
+import { withResolvedStartDistances } from "../../lib/shotSequence";
 import {
   Bar,
   BarChart,
@@ -49,11 +50,16 @@ export default function SummaryPage() {
     }
   }, [router.isReady, roundId]);
 
+  const resolvedShots = useMemo(() => {
+    if (!round) return [] as Shot[];
+    return withResolvedStartDistances(round.shots);
+  }, [round]);
+
   const totals: Totals = useMemo(() => {
     const base: Totals = { OTT: 0, APP: 0, ARG: 0, PUTT: 0, TOTAL: 0 };
     if (!round) return base;
 
-    for (const shot of round.shots) {
+    for (const shot of resolvedShots) {
       const { sg, category, isValid } = calculateStrokesGained(shot);
       if (!isValid) continue;
       base[category] += sg ?? 0;
@@ -61,7 +67,7 @@ export default function SummaryPage() {
     }
 
     return base;
-  }, [round]);
+  }, [round, resolvedShots]);
 
   const totalStrokes = useMemo(() => {
     if (!round) return 0;
@@ -80,20 +86,20 @@ export default function SummaryPage() {
 
   const hasInvalidBaseline = useMemo(() => {
     if (!round) return false;
-    return round.shots.some((shot) => !calculateStrokesGained(shot).isValid);
-  }, [round]);
+    return resolvedShots.some((shot) => !calculateStrokesGained(shot).isValid);
+  }, [round, resolvedShots]);
 
   const cumulativeData = useMemo(() => {
     if (!round) return [];
     let running = 0;
-    return round.shots.map((shot, idx) => {
+    return resolvedShots.map((shot, idx) => {
       const { sg, isValid } = calculateStrokesGained(shot);
       if (!isValid || sg === null)
         return { index: idx + 1, total: Number(running.toFixed(3)) };
       running += sg;
       return { index: idx + 1, total: Number(running.toFixed(3)) };
     });
-  }, [round]);
+  }, [round, resolvedShots]);
 
   const categoryData = useMemo(() => {
     return [
@@ -170,7 +176,7 @@ export default function SummaryPage() {
     };
 
     const entries: Array<{ label: string; sg: number }> = [];
-    for (const shot of round.shots) {
+    for (const shot of resolvedShots) {
       const { sg, isValid } = calculateStrokesGained(shot);
       if (!isValid || sg === null) continue;
       const label = `Hole ${shot.holeNumber}: ${shot.startLie} → ${shot.endLie}`;
@@ -187,7 +193,7 @@ export default function SummaryPage() {
       .slice(0, 2);
 
     return { gains, losses };
-  }, [round]);
+  }, [round, resolvedShots]);
 
   const holeSummaries = useMemo(() => {
     if (!round) return [] as Array<{ hole: number; shots: number; penalties: number }>;

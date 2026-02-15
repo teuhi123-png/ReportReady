@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Round } from "../types/golf";
 import { clearRounds, deleteRound, getRounds } from "../lib/storage";
 import { calculateStrokesGained } from "../lib/strokesGained";
+import { withResolvedStartDistances } from "../lib/shotSequence";
 
 type Totals = {
   OTT: number;
@@ -23,7 +24,7 @@ type FilterValue = (typeof FILTERS)[number];
 
 function sumTotals(shots: Round["shots"]): Totals {
   const base: Totals = { OTT: 0, APP: 0, ARG: 0, PUTT: 0, TOTAL: 0 };
-  for (const shot of shots) {
+  for (const shot of withResolvedStartDistances(shots)) {
     const { sg, category, isValid } = calculateStrokesGained(shot);
     if (!isValid || sg === null) continue;
     base[category] += sg;

@@ -188,7 +188,12 @@ export default function RoundPage() {
     holeNumber,
     shotNumber: nextShotNumber,
     startLie: holeShots.length === 0 ? "TEE" : startLie,
-    startDistance: puttingMode ? puttingStartDistance : startDistanceValue,
+    startDistance:
+      holeShots.length === 0
+        ? startDistanceValue
+        : puttingMode
+          ? puttingStartDistance
+          : currentStartDistance,
     endLie: endLieForShot,
     endDistance: endDistanceForShot,
     penaltyStrokes,
@@ -341,7 +346,7 @@ export default function RoundPage() {
       holeNumber,
       shotNumber: nextShotNumber,
       startLie: "GREEN",
-      startDistance: startDistanceValue,
+      startDistance: currentStartDistance,
       endLie: "GREEN",
       endDistance: 0,
       penaltyStrokes,

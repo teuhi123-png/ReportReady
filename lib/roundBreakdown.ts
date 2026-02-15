@@ -1,6 +1,7 @@
 import type { Lie, Round, Shot } from "../types/golf";
 import { categorizeShot } from "./strokesGained";
 import { getExpectedStrokes } from "./expectedStrokes";
+import { withResolvedStartDistances } from "./shotSequence";
 
 export type ShotBreakdown = {
   id: string;
@@ -26,7 +27,7 @@ export type HoleBreakdown = {
 
 export function buildRoundBreakdown(round: Round): HoleBreakdown[] {
   const byHole = new Map<number, Shot[]>();
-  for (const shot of round.shots) {
+  for (const shot of withResolvedStartDistances(round.shots)) {
     const list = byHole.get(shot.holeNumber) ?? [];
     list.push(shot);
     byHole.set(shot.holeNumber, list);
