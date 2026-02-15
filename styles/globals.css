@@ -409,6 +409,23 @@ a:hover {
   padding: 8px 0;
 }
 
+.locked-shots-list {
+  gap: 10px;
+}
+
+.locked-shot-row {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  opacity: 0.86;
+}
+
+.locked-chip {
+  background: rgba(255, 255, 255, 0.06);
+  color: #d1d5db;
+}
+
 .score-row {
   display: flex;
   justify-content: space-between;

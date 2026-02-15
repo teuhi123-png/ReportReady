@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import type { Lie, Round, Shot } from "../../types/golf";
 import { addShot, endRound, getRound, undoLastShot } from "../../lib/storage";
-import { calculateStrokesGained } from "../../lib/strokesGained";
+import { calculateStrokesGained, categorizeShot } from "../../lib/strokesGained";
 import { formatDistanceMeters } from "../../lib/expectedStrokes";
 import Button from "../../components/ui/Button";
 import Card from "../../components/ui/Card";
@@ -12,6 +12,28 @@ import PillToggleGroup from "../../components/ui/PillToggleGroup";
 import StatChip from "../../components/ui/StatChip";
 
 const LIES: Lie[] = ["FAIRWAY", "ROUGH", "BUNKER", "RECOVERY", "FRINGE", "GREEN"];
+
+function getSortedShotsForHole(round: Round, holeNumber: number): Shot[] {
+  return round.shots
+    .filter((s) => s.holeNumber === holeNumber)
+    .sort((a, b) => a.shotNumber - b.shotNumber);
+}
+
+function isHoleFinished(shots: Shot[]): boolean {
+  return shots.some((s) => s.endLie === "GREEN" && s.endDistance === 0);
+}
+
+function getResumeHole(round: Round): number {
+  const targetHoles = round.targetHoles ?? 18;
+  // Resume at the first incomplete hole based on saved shots.
+  for (let hole = 1; hole <= targetHoles; hole += 1) {
+    const shots = getSortedShotsForHole(round, hole);
+    if (shots.length === 0) return hole;
+    if (!isHoleFinished(shots)) return hole;
+  }
+  // All holes complete: keep user on the final hole instead of resetting to hole 1.
+  return targetHoles;
+}
 
 export default function RoundPage() {
   const router = useRouter();
@@ -54,6 +76,11 @@ export default function RoundPage() {
     const found = getRound(roundId);
     setRound(found ?? null);
   }, [router.isReady, roundId]);
+
+  useEffect(() => {
+    if (!round) return;
+    setHoleNumber(getResumeHole(round));
+  }, [round?.id]);
 
   useEffect(() => {
     if (!round) return;
@@ -212,9 +239,31 @@ export default function RoundPage() {
 
   useEffect(() => {
     if (!round) return;
-    setStartDistance("");
+    const sortedHoleShots = round.shots
+      .filter((s) => s.holeNumber === holeNumber)
+      .sort((a, b) => a.shotNumber - b.shotNumber);
+    const lastShot = sortedHoleShots.length > 0 ? sortedHoleShots[sortedHoleShots.length - 1] : null;
+    const prevHole = holeNumber > 1 ? holeNumber - 1 : null;
+    const prevHoleShots =
+      prevHole !== null
+        ? round.shots
+            .filter((s) => s.holeNumber === prevHole)
+            .sort((a, b) => a.shotNumber - b.shotNumber)
+        : [];
+    const lastShotPrevHole =
+      prevHoleShots.length > 0 ? prevHoleShots[prevHoleShots.length - 1] : null;
+    // Resume start context from the last saved shot in this hole when available.
+    if (lastShot) {
+      setStartLie(lastShot.endLie);
+      setStartDistance(String(lastShot.endDistance));
+    } else if (lastShotPrevHole && lastShotPrevHole.endDistance > 0) {
+      setStartLie(lastShotPrevHole.endLie);
+      setStartDistance(String(lastShotPrevHole.endDistance));
+    } else {
+      setStartLie("TEE");
+      setStartDistance("");
+    }
     setEndDistance("");
-    setStartLie("FAIRWAY");
     setEndLieSelection(null);
     setCustomPutts("");
     setPuttsCount(null);
@@ -704,8 +753,34 @@ export default function RoundPage() {
           </Card>
         </form>
 
-        <Card title={`Shots (${totalStrokes})`}>
-          <div className="muted">Shots list is available on Summary.</div>
+        <Card title="Shots for this hole">
+          {holeShots.length === 0 ? (
+            <div className="muted">No saved shots for this hole yet.</div>
+          ) : (
+            <div className="shot-list locked-shots-list">
+              {holeShots.map((shot) => (
+                <div key={`locked-shot-${shot.holeNumber}-${shot.shotNumber}`} className="shot-row locked-shot-row">
+                  <div className="score-row">
+                    <div className="score-line">
+                      Shot {shot.shotNumber} · {categorizeShot(shot)}
+                    </div>
+                    <span className="chip locked-chip">Locked</span>
+                  </div>
+                  <div className="muted">
+                    {shot.startLie} {formatDistanceMeters(shot.startDistance, shot.startLie)} →{" "}
+                    {shot.endLie} {formatDistanceMeters(shot.endDistance, shot.endLie)}
+                  </div>
+                  {typeof shot.putts === "number" && (
+                    <div className="muted">Putts: {shot.putts}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card title={`Round shots (${totalStrokes})`}>
+          <div className="muted">View all holes on Summary.</div>
         </Card>
       </div>
 
