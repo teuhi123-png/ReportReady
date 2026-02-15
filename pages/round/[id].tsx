@@ -14,24 +14,19 @@ import StatChip from "../../components/ui/StatChip";
 
 const LIES: Lie[] = ["FAIRWAY", "ROUGH", "BUNKER", "RECOVERY", "FRINGE", "GREEN"];
 
-function useVisualViewportKeyboardOffset(): number {
-  const [keyboardOffsetPx, setKeyboardOffsetPx] = useState(0);
-
+function useVisualViewportKeyboardOffset(): void {
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const root = document.documentElement;
 
     const update = () => {
       const vv = window.visualViewport;
       if (!vv) {
-        setKeyboardOffsetPx(0);
+        root.style.setProperty("--kb", "0px");
         return;
       }
-      // Keep the fixed footer above the iOS keyboard in PWA mode.
-      const keyboardHeight = Math.max(
-        0,
-        window.innerHeight - vv.height - vv.offsetTop,
-      );
-      setKeyboardOffsetPx(keyboardHeight);
+      const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      root.style.setProperty("--kb", `${overlap}px`);
     };
 
     update();
@@ -44,10 +39,9 @@ function useVisualViewportKeyboardOffset(): number {
       vv?.removeEventListener("resize", update);
       vv?.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      root.style.setProperty("--kb", "0px");
     };
   }, []);
-
-  return keyboardOffsetPx;
 }
 
 function getSortedShotsForHole(round: Round, holeNumber: number): Shot[] {
@@ -105,7 +99,7 @@ export default function RoundPage() {
   const lastEndDistanceRef = useRef("");
   const [shotsExpanded, setShotsExpanded] = useState(false);
   const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
-  const keyboardOffsetPx = useVisualViewportKeyboardOffset();
+  useVisualViewportKeyboardOffset();
 
   const roundEnded = Boolean(round?.endedAt);
   const isEnded = roundEnded;
@@ -459,8 +453,7 @@ export default function RoundPage() {
         position: "fixed",
         left: 0,
         right: 0,
-        bottom: `calc(env(safe-area-inset-bottom) + ${keyboardOffsetPx}px)`,
-        zIndex: 9999,
+        zIndex: 2147483000,
         pointerEvents: "auto",
       }}
     >
@@ -583,7 +576,7 @@ export default function RoundPage() {
         <div
           className="container"
           style={{
-            paddingBottom: 140 + keyboardOffsetPx,
+            paddingBottom: 140,
           }}
         >
         <form
