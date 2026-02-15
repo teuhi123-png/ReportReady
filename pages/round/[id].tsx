@@ -454,12 +454,21 @@ export default function RoundPage() {
     <div
       className="mobile-action-bar-shell"
       style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
         bottom: keyboardVisible ? `${keyboardHeight}px` : "env(safe-area-inset-bottom)",
         zIndex: 999,
         pointerEvents: "auto",
       }}
+      onTouchStartCapture={(e) => e.stopPropagation()}
+      onPointerDownCapture={(e) => e.stopPropagation()}
     >
-      <div className="mobile-action-bar">
+      <div
+        className="mobile-action-bar"
+        onTouchStartCapture={(e) => e.stopPropagation()}
+        onPointerDownCapture={(e) => e.stopPropagation()}
+      >
         {isEnded ? (
           <Link href={`/summary/${round.id}`} className="pill">
             View summary
@@ -919,7 +928,7 @@ export default function RoundPage() {
         </Card>
       </div>
       </div>
-      {footerPortalReady ? createPortal(footer, document.body) : footer}
+      {footerPortalReady ? createPortal(footer, document.body) : null}
 
       {showEndRoundModal && (
         <div className="modal-backdrop">
