@@ -473,7 +473,16 @@ export default function RoundPage() {
             handleSaveShot();
           }}
         >
-          <Card title="Shot entry">
+          <div className={`entry-card-wrap ${isHoleComplete ? "entry-card-complete" : ""}`.trim()}>
+          <Card
+            title="Shot entry"
+            headerRight={
+              <div className="entry-header-right">
+                <span className="chip next-shot-chip">Shot {nextShotNumber}</span>
+                {isHoleComplete && <span className="chip completed-chip">Completed</span>}
+              </div>
+            }
+          >
             {isEnded && (
               <div className="muted">Round complete. View summary for insights.</div>
             )}
@@ -486,7 +495,10 @@ export default function RoundPage() {
               >
                 −
               </Button>
-              <div className="stepper-value">Hole {displayHole}</div>
+              <div className="stepper-meta">
+                <div className="stepper-value">Hole {displayHole}</div>
+                <div className="muted">Shot {nextShotNumber}</div>
+              </div>
               <Button
                 type="button"
                 variant="secondary"
@@ -742,7 +754,6 @@ export default function RoundPage() {
                 <div className="muted">Hole complete. Move to the next hole.</div>
                 <Button
                   type="button"
-                  variant="secondary"
                   onClick={() => setHoleNumber((h) => Math.min(targetHoles, h + 1))}
                 >
                   Next hole
@@ -751,6 +762,7 @@ export default function RoundPage() {
             )}
             {endSuggestion && <div className="muted field-gap">{endSuggestion}</div>}
           </Card>
+          </div>
         </form>
 
         <Card title="Shots for this hole">

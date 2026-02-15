@@ -410,20 +410,53 @@ a:hover {
 }
 
 .locked-shots-list {
-  gap: 10px;
+  gap: 8px;
 }
 
 .locked-shot-row {
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.02);
   opacity: 0.86;
+  gap: 4px;
 }
 
 .locked-chip {
-  background: rgba(255, 255, 255, 0.06);
+  min-height: 22px;
+  padding: 1px 7px;
+  background: rgba(255, 255, 255, 0.05);
   color: #d1d5db;
+  font-size: 11px;
+}
+
+.entry-card-wrap.entry-card-complete .card {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(22, 26, 34, 0.86);
+}
+
+.entry-header-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.next-shot-chip {
+  background: rgba(37, 99, 235, 0.16);
+  color: #bfdbfe;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+}
+
+.completed-chip {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+}
+
+.stepper-meta {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
 }
 
 .score-row {
