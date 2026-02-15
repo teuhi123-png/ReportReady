@@ -495,10 +495,7 @@ export default function RoundPage() {
               >
                 −
               </Button>
-              <div className="stepper-meta">
-                <div className="stepper-value">Hole {displayHole}</div>
-                <div className="muted">Shot {nextShotNumber}</div>
-              </div>
+              <div className="stepper-value">Hole {displayHole}</div>
               <Button
                 type="button"
                 variant="secondary"

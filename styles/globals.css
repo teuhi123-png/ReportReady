@@ -453,11 +453,6 @@ a:hover {
   color: #e5e7eb;
 }
 
-.stepper-meta {
-  display: grid;
-  gap: 2px;
-  justify-items: center;
-}
 
 .score-row {
   display: flex;
