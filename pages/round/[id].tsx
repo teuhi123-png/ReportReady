@@ -67,7 +67,8 @@ export default function RoundPage() {
   const baselineViewportHeightRef = useRef<number>(0);
   const [shotsExpanded, setShotsExpanded] = useState(false);
   const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
-  const [keyboardOffsetPx, setKeyboardOffsetPx] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   const roundEnded = Boolean(round?.endedAt);
   const isEnded = roundEnded;
@@ -96,6 +97,7 @@ export default function RoundPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     baselineViewportHeightRef.current = window.innerHeight;
+    const isIOS = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
 
     const update = () => {
       const base = baselineViewportHeightRef.current || window.innerHeight;
@@ -104,7 +106,12 @@ export default function RoundPage() {
       const visualViewportOffset = vv
         ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
         : 0;
-      setKeyboardOffsetPx(Math.max(innerHeightOffset, visualViewportOffset));
+      const rawKeyboardHeight = Math.max(innerHeightOffset, visualViewportOffset);
+      const visible = rawKeyboardHeight > 0;
+      // iOS virtual keyboard accessory area can overlap fixed footers; keep a safety gap.
+      const iosAccessoryPadding = visible && isIOS ? 44 : 0;
+      setKeyboardVisible(visible);
+      setKeyboardHeight(visible ? rawKeyboardHeight + iosAccessoryPadding : 0);
     };
 
     update();
@@ -476,7 +483,7 @@ export default function RoundPage() {
         <div
           className="container"
           style={{
-            paddingBottom: 140 + keyboardOffsetPx,
+            paddingBottom: 140 + keyboardHeight,
           }}
         >
         <form
@@ -822,7 +829,7 @@ export default function RoundPage() {
       <div
         className="mobile-action-bar-shell"
         style={{
-          bottom: `calc(env(safe-area-inset-bottom) + ${keyboardOffsetPx}px)`,
+          bottom: keyboardVisible ? `${keyboardHeight}px` : "env(safe-area-inset-bottom)",
           zIndex: 999,
           pointerEvents: "auto",
         }}
