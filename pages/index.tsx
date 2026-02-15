@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import {
@@ -11,8 +11,8 @@ import {
 } from "../lib/storage";
 import type { Round } from "../types/golf";
 import Button from "../components/ui/Button";
-import Card from "../components/ui/Card";
 import Input from "../components/ui/Input";
+import { buildRoundBreakdown } from "../lib/roundBreakdown";
 
 export default function Home() {
   const router = useRouter();
@@ -22,6 +22,7 @@ export default function Home() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [expandedActionsRoundId, setExpandedActionsRoundId] = useState<string | null>(null);
 
   useEffect(() => {
     setRounds(getRounds());
@@ -109,45 +110,99 @@ export default function Home() {
     reader.readAsText(file);
   }
 
+  const latestRound = rounds[0] ?? null;
+  const latestSnapshot = useMemo(() => {
+    if (!latestRound) return null;
+    const totals = { OTT: 0, APP: 0, ARG: 0, PUTT: 0 };
+    let hasValues = false;
+    for (const hole of buildRoundBreakdown(latestRound)) {
+      for (const shot of hole.shots) {
+        if (shot.strokesGained === null) continue;
+        totals[shot.category] += shot.strokesGained;
+        hasValues = true;
+      }
+    }
+    const totalSG = totals.OTT + totals.APP + totals.ARG + totals.PUTT;
+    return { totals, totalSG, hasValues };
+  }, [latestRound]);
+
   return (
     <main className="page">
       <div className="container">
-        <section className="card">
-          <div className="card-body hero">
-            <div className="h1">Strokes Gained Tracker</div>
-            <div className="hero-sub">Tour-Level Strokes Gained Analytics</div>
-            <Card title="Start a new round">
-              <div className="form-stack">
-                <Input
-                  label="Course name"
-                  placeholder="Course name (optional)"
-                  value={course}
-                  onChange={(e) => setCourse(e.target.value)}
-                />
-                <div>
-                  <div className="label">Round length</div>
-                  <div className="pill-group">
-                    <button
-                      type="button"
-                      className={`pill ${targetHoles === 9 ? "active" : ""}`.trim()}
-                      onClick={() => setTargetHoles(9)}
-                    >
-                      9 holes
-                    </button>
-                    <button
-                      type="button"
-                      className={`pill ${targetHoles === 18 ? "active" : ""}`.trim()}
-                      onClick={() => setTargetHoles(18)}
-                    >
-                      18 holes
-                    </button>
-                  </div>
-                </div>
-                <div className="actions">
-                  <Button onClick={onStart}>Start Round</Button>
+        <section className="home-header">
+          <div className="home-header-row">
+            <div className="home-header-title">Strokes Gained</div>
+            <div className="home-header-pill">Tour-level</div>
+          </div>
+          <div className="home-header-subtext">
+            Track every shot and compare your round against Tour baselines.
+          </div>
+        </section>
+
+        {latestRound && (
+          <section className="card home-snapshot">
+            <div className="card-body">
+              <div className="label">Last Round</div>
+              <div className="home-snapshot-headline">{latestRound.courseName || "Unnamed course"}</div>
+              <div className="muted">{new Date(latestRound.createdAt).toLocaleString()}</div>
+              <div className="home-snapshot-total">
+                {latestSnapshot && latestSnapshot.totalSG >= 0 ? "+" : ""}
+                {latestSnapshot ? latestSnapshot.totalSG.toFixed(2) : "—"}
+              </div>
+              <div className="muted home-snapshot-total-label">Total SG</div>
+              <div className="home-snapshot-chips">
+                {(["OTT", "APP", "ARG", "PUTT"] as const).map((cat) => (
+                  <span key={`snapshot-${cat}`} className="home-snapshot-chip">
+                    {cat}
+                    {latestSnapshot?.hasValues ? ` ${latestSnapshot.totals[cat].toFixed(2)}` : ""}
+                  </span>
+                ))}
+              </div>
+              <div className="home-snapshot-actions">
+                <Link href={`/summary/${latestRound.id}`}>
+                  <Button>View Summary</Button>
+                </Link>
+                <Link href={`/round/${latestRound.id}`}>
+                  <Button variant="secondary">Continue Round</Button>
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="card home-start-card">
+          <div className="card-body">
+            <div className="home-start-title">Start a new round</div>
+            <div className="form-stack home-start-stack">
+              <Input
+                label="Course name"
+                placeholder="Course name (optional)"
+                value={course}
+                onChange={(e) => setCourse(e.target.value)}
+              />
+              <div>
+                <div className="label">Round length</div>
+                <div className="home-segmented">
+                  <button
+                    type="button"
+                    className={`home-segment ${targetHoles === 9 ? "active" : ""}`.trim()}
+                    onClick={() => setTargetHoles(9)}
+                  >
+                    9 holes
+                  </button>
+                  <button
+                    type="button"
+                    className={`home-segment ${targetHoles === 18 ? "active" : ""}`.trim()}
+                    onClick={() => setTargetHoles(18)}
+                  >
+                    18 holes
+                  </button>
                 </div>
               </div>
-            </Card>
+              <Button className="home-start-button" onClick={onStart}>
+                Start Round
+              </Button>
+            </div>
           </div>
         </section>
 
@@ -157,10 +212,10 @@ export default function Home() {
             <div className="muted">No rounds yet. Start your first round.</div>
           ) : (
             rounds.map((r) => (
-              <div key={r.id} className="card round-card">
+              <div key={r.id} className="card round-card home-round-card">
                 <div className="card-body">
                   {editingId === r.id ? (
-                    <div className="form-stack">
+                    <div className="form-stack home-round-edit-stack">
                       <Input
                         label="Course name"
                         value={editingName}
@@ -181,30 +236,45 @@ export default function Home() {
                     </div>
                   ) : (
                     <>
-                      <div className="round-title">
-                        {r.courseName || "Unnamed course"}
-                      </div>
-                      <div className="muted">
-                        {new Date(r.createdAt).toLocaleString()} · {r.shots.length} shots
-                      </div>
-                      <div className="actions">
-                        <Link href={`/round/${r.id}`}>
-                          <Button variant="secondary">Continue</Button>
-                        </Link>
-                        <Link href={`/summary/${r.id}`}>
-                          <Button variant="secondary">Summary</Button>
-                        </Link>
-                        <Button variant="secondary" onClick={() => onEdit(r)}>
-                          Edit
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="btn-outline-danger"
-                          onClick={() => onDelete(r.id)}
+                      <div className="home-round-row">
+                        <div className="home-round-meta">
+                          <div className="round-title">{r.courseName || "Unnamed course"}</div>
+                          <div className="muted">
+                            {new Date(r.createdAt).toLocaleString()} · {r.shots.length} shots
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="pill home-round-actions-toggle"
+                          aria-label="Toggle round actions"
+                          aria-expanded={expandedActionsRoundId === r.id}
+                          onClick={() =>
+                            setExpandedActionsRoundId((prev) => (prev === r.id ? null : r.id))
+                          }
                         >
-                          Delete
-                        </Button>
+                          ⋯
+                        </button>
                       </div>
+                      {expandedActionsRoundId === r.id && (
+                        <div className="home-round-actions-grid">
+                          <Link href={`/round/${r.id}`}>
+                            <Button variant="secondary">Continue</Button>
+                          </Link>
+                          <Link href={`/summary/${r.id}`}>
+                            <Button variant="secondary">Summary</Button>
+                          </Link>
+                          <Button variant="secondary" onClick={() => onEdit(r)}>
+                            Edit
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            className="btn-outline-danger"
+                            onClick={() => onDelete(r.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
