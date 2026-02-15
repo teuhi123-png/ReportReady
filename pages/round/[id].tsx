@@ -817,83 +817,85 @@ export default function RoundPage() {
       </div>
 
       <div
-        className="mobile-action-bar"
+        className="mobile-action-bar-shell"
         style={{ bottom: `calc(env(safe-area-inset-bottom) + ${keyboardOffsetPx}px)` }}
       >
-        {isEnded ? (
-          <Link href={`/summary/${round.id}`} className="pill">
-            View summary
-          </Link>
-        ) : finalHoleComplete ? (
-          <>
-            <div className="pill-group">
-              <button
+        <div className="mobile-action-bar">
+          {isEnded ? (
+            <Link href={`/summary/${round.id}`} className="pill">
+              View summary
+            </Link>
+          ) : finalHoleComplete ? (
+            <>
+              <div className="pill-group">
+                <button
+                  type="button"
+                  className={`pill ${penaltyStrokes === 0 ? "active" : ""}`.trim()}
+                  disabled={isEnded}
+                  onClick={() => setPenaltyStrokes(0)}
+                >
+                  P0
+                </button>
+                <button
+                  type="button"
+                  className={`pill ${penaltyStrokes === 1 ? "active" : ""}`.trim()}
+                  disabled={isEnded}
+                  onClick={() => setPenaltyStrokes(1)}
+                >
+                  P+1
+                </button>
+                <button
+                  type="button"
+                  className={`pill ${penaltyStrokes === 2 ? "active" : ""}`.trim()}
+                  disabled={isEnded}
+                  onClick={() => setPenaltyStrokes(2)}
+                >
+                  P+2
+                </button>
+              </div>
+              <Button type="button" onClick={handleEndRound}>
+                Finish round
+              </Button>
+            </>
+          ) : (
+            <>
+              <div className="pill-group">
+                <button
+                  type="button"
+                  className={`pill ${penaltyStrokes === 0 ? "active" : ""}`.trim()}
+                  disabled={isEnded}
+                  onClick={() => setPenaltyStrokes(0)}
+                >
+                  P0
+                </button>
+                <button
+                  type="button"
+                  className={`pill ${penaltyStrokes === 1 ? "active" : ""}`.trim()}
+                  disabled={isEnded}
+                  onClick={() => setPenaltyStrokes(1)}
+                >
+                  P+1
+                </button>
+                <button
+                  type="button"
+                  className={`pill ${penaltyStrokes === 2 ? "active" : ""}`.trim()}
+                  disabled={isEnded}
+                  onClick={() => setPenaltyStrokes(2)}
+                >
+                  P+2
+                </button>
+              </div>
+              <Button
                 type="button"
-                className={`pill ${penaltyStrokes === 0 ? "active" : ""}`.trim()}
-                disabled={isEnded}
-                onClick={() => setPenaltyStrokes(0)}
+                onClick={handleSaveShot}
+                disabled={roundComplete || !canSave || isHoleComplete || roundEnded}
+                className={saveNudge ? "save-nudge" : undefined}
               >
-                P0
-              </button>
-              <button
-                type="button"
-                className={`pill ${penaltyStrokes === 1 ? "active" : ""}`.trim()}
-                disabled={isEnded}
-                onClick={() => setPenaltyStrokes(1)}
-              >
-                P+1
-              </button>
-              <button
-                type="button"
-                className={`pill ${penaltyStrokes === 2 ? "active" : ""}`.trim()}
-                disabled={isEnded}
-                onClick={() => setPenaltyStrokes(2)}
-              >
-                P+2
-              </button>
-            </div>
-            <Button type="button" onClick={handleEndRound}>
-              Finish round
-            </Button>
-          </>
-        ) : (
-          <>
-            <div className="pill-group">
-              <button
-                type="button"
-                className={`pill ${penaltyStrokes === 0 ? "active" : ""}`.trim()}
-                disabled={isEnded}
-                onClick={() => setPenaltyStrokes(0)}
-              >
-                P0
-              </button>
-              <button
-                type="button"
-                className={`pill ${penaltyStrokes === 1 ? "active" : ""}`.trim()}
-                disabled={isEnded}
-                onClick={() => setPenaltyStrokes(1)}
-              >
-                P+1
-              </button>
-              <button
-                type="button"
-                className={`pill ${penaltyStrokes === 2 ? "active" : ""}`.trim()}
-                disabled={isEnded}
-                onClick={() => setPenaltyStrokes(2)}
-              >
-                P+2
-              </button>
-            </div>
-            <Button
-              type="button"
-              onClick={handleSaveShot}
-              disabled={roundComplete || !canSave || isHoleComplete || roundEnded}
-              className={saveNudge ? "save-nudge" : undefined}
-            >
-              Save shot
-            </Button>
-          </>
-        )}
+                Save shot
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {showEndRoundModal && (
