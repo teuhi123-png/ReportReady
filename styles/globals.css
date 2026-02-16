@@ -19,6 +19,7 @@
   --focus: 0 0 0 3px rgba(37, 99, 235, 0.4);
   --container: 1000px;
   --sat: env(safe-area-inset-bottom);
+  --kb: 0px;
 }
 
 * {
@@ -412,12 +413,10 @@ a:hover {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: env(safe-area-inset-bottom);
-    transform: translateY(0);
+    bottom: calc(env(safe-area-inset-bottom) + var(--kb, 0px));
     z-index: 2147483000;
     pointer-events: auto;
     touch-action: manipulation;
-    will-change: transform;
   }
 
   .mobile-action-bar {

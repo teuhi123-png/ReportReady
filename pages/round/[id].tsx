@@ -18,29 +18,16 @@ function useVisualViewportKeyboardOffset(): void {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const root = document.documentElement;
-    const safeFromVar = parseFloat(getComputedStyle(root).getPropertyValue("--sat") || "0");
-    const safeFromBody = parseFloat(getComputedStyle(document.body).paddingBottom || "0");
-    const safe =
-      Number.isFinite(safeFromVar) && safeFromVar > 0
-        ? safeFromVar
-        : Number.isFinite(safeFromBody)
-          ? safeFromBody
-          : 0;
-    const maxLift = 320;
 
     const update = () => {
       const vv = window.visualViewport;
-      const actionBar = document.querySelector<HTMLElement>(".mobile-action-bar-shell");
       if (!vv) {
-        if (actionBar) actionBar.style.transform = "translateY(0px)";
+        root.style.setProperty("--kb", "0px");
         return;
       }
-      const viewportH = window.innerHeight;
-      const keyboard = Math.max(0, viewportH - vv.height - vv.offsetTop);
-      const gap = keyboard > 0 ? 6 : 0;
-      const translate = Math.max(0, keyboard + gap - safe);
-      const translateClamped = Math.min(translate, maxLift);
-      if (actionBar) actionBar.style.transform = `translateY(-${translateClamped}px)`;
+      const kbPx = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      const kbWithGap = kbPx > 0 ? kbPx + 6 : 0;
+      root.style.setProperty("--kb", `${kbWithGap}px`);
     };
 
     update();
@@ -53,8 +40,7 @@ function useVisualViewportKeyboardOffset(): void {
       vv?.removeEventListener("resize", update);
       vv?.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
-      const actionBar = document.querySelector<HTMLElement>(".mobile-action-bar-shell");
-      if (actionBar) actionBar.style.transform = "translateY(0px)";
+      root.style.setProperty("--kb", "0px");
     };
   }, []);
 }
@@ -79,6 +65,13 @@ function getResumeHole(round: Round): number {
   }
   // All holes complete: keep user on the final hole instead of resetting to hole 1.
   return targetHoles;
+}
+
+function scrollInputIntoView(el: HTMLElement | null): void {
+  if (!el) return;
+  requestAnimationFrame(() => {
+    el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+  });
 }
 
 export default function RoundPage() {
@@ -666,10 +659,7 @@ export default function RoundPage() {
                         setStartDistance(clampDistanceText(e.target.value, startLie === "GREEN"))
                       }
                       onFocus={() =>
-                        startDistanceRef.current?.scrollIntoView({
-                          behavior: "smooth",
-                          block: "center",
-                        })
+                        scrollInputIntoView(startDistanceRef.current)
                       }
                       disabled={isEnded}
                       ref={startDistanceRef}
@@ -702,10 +692,7 @@ export default function RoundPage() {
                       if (isEnded) return;
                       setEndLieSelection(value);
                       endDistanceRef.current?.focus();
-                      endDistanceRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                      });
+                      scrollInputIntoView(endDistanceRef.current);
                     }}
                     ariaLabel="End lie"
                   />
@@ -738,12 +725,7 @@ export default function RoundPage() {
                       setEndDistanceValue(clamped);
                     }}
                     onBlur={() => setSaveNudge(true)}
-                    onFocus={() =>
-                      endDistanceRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                      })
-                    }
+                    onFocus={() => scrollInputIntoView(endDistanceRef.current)}
                     disabled={isEnded}
                     ref={endDistanceRef}
                     onKeyDown={(e) => {
@@ -800,6 +782,7 @@ export default function RoundPage() {
                           onChange={(e) =>
                             setCustomPutts(clampDistanceText(e.target.value, false))
                           }
+                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                           disabled={isEnded}
                         />
                       </label>
