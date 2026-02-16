@@ -14,46 +14,110 @@ import StatChip from "../../components/ui/StatChip";
 
 const LIES: Lie[] = ["FAIRWAY", "ROUGH", "BUNKER", "RECOVERY", "FRINGE", "GREEN"];
 
-function useVisualViewportKeyboardOffset(): { keyboardOffset: number; safeAreaBottom: number } {
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
-  const [safeAreaBottom, setSafeAreaBottom] = useState(0);
+type KeyboardAwareBottomBarState = {
+  keyboardOverlap: number;
+  vvHeight: number;
+  vvOffsetTop: number;
+  isKeyboardOpen: boolean;
+  bottomPadPx: number;
+};
+
+function useKeyboardAwareBottomBar(barHeight: number): KeyboardAwareBottomBarState {
+  const [state, setState] = useState<KeyboardAwareBottomBarState>({
+    keyboardOverlap: 0,
+    vvHeight: 0,
+    vvOffsetTop: 0,
+    isKeyboardOpen: false,
+    bottomPadPx: Math.max(140, barHeight),
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const root = document.documentElement;
-    const bodyStyles = getComputedStyle(document.body);
-    const safeInset = Number.parseFloat(bodyStyles.paddingBottom || "0");
-    const safeBottom = Number.isFinite(safeInset) ? safeInset : 0;
-    setSafeAreaBottom(safeBottom);
+    const DEBUG_KEYBOARD = false;
+    let frameId = 0;
 
-    const update = () => {
+    const readSafeBottom = (): number => {
+      const cssSafe = Number.parseFloat(
+        getComputedStyle(root).getPropertyValue("--safe-bottom") || "0",
+      );
+      if (Number.isFinite(cssSafe) && cssSafe > 0) return cssSafe;
+      const bodySafe = Number.parseFloat(getComputedStyle(document.body).paddingBottom || "0");
+      return Number.isFinite(bodySafe) ? bodySafe : 0;
+    };
+
+    const commit = () => {
+      frameId = 0;
       const vv = window.visualViewport;
+      const safeBottom = readSafeBottom();
       if (!vv) {
         root.style.setProperty("--kb", "0px");
-        setKeyboardOffset(0);
+        const nextState: KeyboardAwareBottomBarState = {
+          keyboardOverlap: 0,
+          vvHeight: window.innerHeight,
+          vvOffsetTop: 0,
+          isKeyboardOpen: false,
+          bottomPadPx: Math.max(140, barHeight + safeBottom),
+        };
+        setState((prev) =>
+          prev.keyboardOverlap === nextState.keyboardOverlap &&
+          prev.vvHeight === nextState.vvHeight &&
+          prev.vvOffsetTop === nextState.vvOffsetTop &&
+          prev.isKeyboardOpen === nextState.isKeyboardOpen &&
+          prev.bottomPadPx === nextState.bottomPadPx
+            ? prev
+            : nextState,
+        );
         return;
       }
-      const kbPx = Math.max(0, window.innerHeight - vv.height);
-      setKeyboardOffset(kbPx);
+      const kbPx = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      const isKeyboardOpen = kbPx > 0;
+      const nextState: KeyboardAwareBottomBarState = {
+        keyboardOverlap: kbPx,
+        vvHeight: vv.height,
+        vvOffsetTop: vv.offsetTop,
+        isKeyboardOpen,
+        bottomPadPx: Math.max(140, barHeight + safeBottom + (isKeyboardOpen ? kbPx : 0)),
+      };
       root.style.setProperty("--kb", `${kbPx}px`);
+      if (DEBUG_KEYBOARD) {
+        // eslint-disable-next-line no-console
+        console.debug("[kb]", nextState);
+      }
+      setState((prev) =>
+        prev.keyboardOverlap === nextState.keyboardOverlap &&
+        prev.vvHeight === nextState.vvHeight &&
+        prev.vvOffsetTop === nextState.vvOffsetTop &&
+        prev.isKeyboardOpen === nextState.isKeyboardOpen &&
+        prev.bottomPadPx === nextState.bottomPadPx
+          ? prev
+          : nextState,
+      );
     };
 
-    update();
+    const schedule = () => {
+      if (frameId) return;
+      frameId = window.requestAnimationFrame(commit);
+    };
+
+    schedule();
     const vv = window.visualViewport;
-    vv?.addEventListener("resize", update);
-    vv?.addEventListener("scroll", update);
-    window.addEventListener("resize", update);
+    vv?.addEventListener("resize", schedule);
+    vv?.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
 
     return () => {
-      vv?.removeEventListener("resize", update);
-      vv?.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
+      vv?.removeEventListener("resize", schedule);
+      vv?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      if (frameId) {
+        window.cancelAnimationFrame(frameId);
+      }
       root.style.setProperty("--kb", "0px");
-      setKeyboardOffset(0);
     };
-  }, []);
+  }, [barHeight]);
 
-  return { keyboardOffset, safeAreaBottom };
+  return state;
 }
 
 function getSortedShotsForHole(round: Round, holeNumber: number): Shot[] {
@@ -76,13 +140,6 @@ function getResumeHole(round: Round): number {
   }
   // All holes complete: keep user on the final hole instead of resetting to hole 1.
   return targetHoles;
-}
-
-function scrollInputIntoView(el: HTMLElement | null): void {
-  if (!el) return;
-  requestAnimationFrame(() => {
-    el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-  });
 }
 
 export default function RoundPage() {
@@ -119,8 +176,8 @@ export default function RoundPage() {
   const footerRef = useRef<HTMLDivElement>(null);
   const [shotsExpanded, setShotsExpanded] = useState(false);
   const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
-  const { keyboardOffset, safeAreaBottom } = useVisualViewportKeyboardOffset();
   const [footerHeight, setFooterHeight] = useState(96);
+  const { keyboardOverlap, bottomPadPx } = useKeyboardAwareBottomBar(footerHeight);
 
   const roundEnded = Boolean(round?.endedAt);
   const isEnded = roundEnded;
@@ -150,6 +207,26 @@ export default function RoundPage() {
     if (typeof window === "undefined") return;
     setFooterPortalReady(true);
   }, []);
+
+  const scrollInputIntoView = (el: HTMLElement | null): void => {
+    if (!el || typeof window === "undefined") return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const rect = el.getBoundingClientRect();
+        const vv = window.visualViewport;
+        const viewportBottom = vv ? vv.height : window.innerHeight;
+        const safeBottom = Number.parseFloat(
+          getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom") || "0",
+        );
+        const usableSafeBottom = Number.isFinite(safeBottom) ? safeBottom : 0;
+        const blockedBottom = footerHeight + keyboardOverlap + usableSafeBottom + 12;
+        const limitBottom = viewportBottom - blockedBottom;
+        if (rect.bottom > limitBottom) {
+          el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+        }
+      });
+    });
+  };
 
   useEffect(() => {
     if (!footerPortalReady) return;
@@ -182,7 +259,7 @@ export default function RoundPage() {
     if (!puttingMode) {
       const el = startDistanceRef.current;
       el?.focus();
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollInputIntoView(el);
     }
   }, [startLie, puttingMode, isEnded]);
 
@@ -191,7 +268,7 @@ export default function RoundPage() {
     if (!endLieGreen && !puttingMode) {
       const el = endDistanceRef.current;
       el?.focus();
-      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      scrollInputIntoView(el);
     }
   }, [endLieGreen, puttingMode, isEnded]);
 
@@ -620,7 +697,7 @@ export default function RoundPage() {
         <div
           className="container"
           style={{
-            paddingBottom: Math.max(140, footerHeight + safeAreaBottom + keyboardOffset),
+            paddingBottom: bottomPadPx,
           }}
         >
         <form
