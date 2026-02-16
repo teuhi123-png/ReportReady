@@ -14,20 +14,28 @@ import StatChip from "../../components/ui/StatChip";
 
 const LIES: Lie[] = ["FAIRWAY", "ROUGH", "BUNKER", "RECOVERY", "FRINGE", "GREEN"];
 
-function useVisualViewportKeyboardOffset(): void {
+function useVisualViewportKeyboardOffset(): { keyboardOffset: number; safeAreaBottom: number } {
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [safeAreaBottom, setSafeAreaBottom] = useState(0);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const root = document.documentElement;
+    const bodyStyles = getComputedStyle(document.body);
+    const safeInset = Number.parseFloat(bodyStyles.paddingBottom || "0");
+    const safeBottom = Number.isFinite(safeInset) ? safeInset : 0;
+    setSafeAreaBottom(safeBottom);
 
     const update = () => {
       const vv = window.visualViewport;
       if (!vv) {
         root.style.setProperty("--kb", "0px");
+        setKeyboardOffset(0);
         return;
       }
       const kbPx = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
-      const kbWithGap = kbPx > 0 ? kbPx + 6 : 0;
-      root.style.setProperty("--kb", `${kbWithGap}px`);
+      setKeyboardOffset(kbPx);
+      root.style.setProperty("--kb", `${kbPx}px`);
     };
 
     update();
@@ -41,8 +49,11 @@ function useVisualViewportKeyboardOffset(): void {
       vv?.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
       root.style.setProperty("--kb", "0px");
+      setKeyboardOffset(0);
     };
   }, []);
+
+  return { keyboardOffset, safeAreaBottom };
 }
 
 function getSortedShotsForHole(round: Round, holeNumber: number): Shot[] {
@@ -105,9 +116,11 @@ export default function RoundPage() {
   const startDistanceRef = useRef<HTMLInputElement>(null);
   const endDistanceRef = useRef<HTMLInputElement>(null);
   const lastEndDistanceRef = useRef("");
+  const footerRef = useRef<HTMLDivElement>(null);
   const [shotsExpanded, setShotsExpanded] = useState(false);
   const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
-  useVisualViewportKeyboardOffset();
+  const { keyboardOffset, safeAreaBottom } = useVisualViewportKeyboardOffset();
+  const [footerHeight, setFooterHeight] = useState(96);
 
   const roundEnded = Boolean(round?.endedAt);
   const isEnded = roundEnded;
@@ -137,6 +150,28 @@ export default function RoundPage() {
     if (typeof window === "undefined") return;
     setFooterPortalReady(true);
   }, []);
+
+  useEffect(() => {
+    if (!footerPortalReady) return;
+    const footerEl = footerRef.current;
+    if (!footerEl) return;
+
+    const measure = () => {
+      const height = footerEl.getBoundingClientRect().height;
+      if (Number.isFinite(height) && height > 0) {
+        setFooterHeight(height);
+      }
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    observer?.observe(footerEl);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [footerPortalReady]);
 
   const handleDistanceSubmit = (): void => {
     handleSaveShot();
@@ -456,6 +491,7 @@ export default function RoundPage() {
 
   const footer = (
     <div
+      ref={footerRef}
       className="mobile-action-bar-shell"
       style={{
         position: "fixed",
@@ -584,7 +620,7 @@ export default function RoundPage() {
         <div
           className="container"
           style={{
-            paddingBottom: 140,
+            paddingBottom: Math.max(140, footerHeight + safeAreaBottom + keyboardOffset),
           }}
         >
         <form
