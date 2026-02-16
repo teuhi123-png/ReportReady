@@ -19,7 +19,6 @@
   --focus: 0 0 0 3px rgba(37, 99, 235, 0.4);
   --container: 1000px;
   --safe-bottom: env(safe-area-inset-bottom);
-  --kb: 0px;
 }
 
 * {
@@ -359,22 +358,44 @@ a:hover {
   }
 }
 
-.mobile-action-spacer {
-  padding-bottom: 96px;
-}
-
 .round-main-content {
   position: relative;
   z-index: 1;
 }
 
+.round-sticky-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.round-sticky-content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .mobile-action-bar-shell {
-  display: none;
+  position: sticky;
+  bottom: 0;
+  z-index: 40;
   pointer-events: auto;
+  background: rgba(10, 10, 10, 0.9);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .mobile-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 10px;
+  min-height: 72px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   pointer-events: auto;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .mobile-action-bar .btn {
@@ -397,51 +418,6 @@ a:hover {
   min-width: 52px;
   padding: 6px 12px;
   white-space: nowrap;
-}
-
-@media (max-width: 640px) {
-  .action-bar {
-    display: none;
-  }
-
-  .mobile-action-spacer {
-    padding-bottom: 140px;
-  }
-
-  .mobile-action-bar-shell {
-    display: block;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    transform: translate3d(0, calc(-1 * var(--kb, 0px)), 0);
-    z-index: 2147483000;
-    pointer-events: auto;
-    touch-action: manipulation;
-    will-change: transform;
-  }
-
-  .mobile-action-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: nowrap;
-    gap: 10px;
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-    background: #0f1115;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    z-index: 2147483001;
-    pointer-events: auto;
-    touch-action: manipulation;
-    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
-    isolation: isolate;
-    min-height: 72px;
-  }
-
-  .mobile-action-bar-shell::before,
-  .mobile-action-bar-shell::after {
-    pointer-events: none;
-  }
 }
 
 .shot-list {

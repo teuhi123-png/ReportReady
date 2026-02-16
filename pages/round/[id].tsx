@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
-import { createPortal } from "react-dom";
 import type { Lie, Round, Shot } from "../../types/golf";
 import { addShot, endRound, getRound, undoLastShot } from "../../lib/storage";
 import { calculateStrokesGained, categorizeShot } from "../../lib/strokesGained";
@@ -14,183 +12,6 @@ import PillToggleGroup from "../../components/ui/PillToggleGroup";
 import StatChip from "../../components/ui/StatChip";
 
 const LIES: Lie[] = ["FAIRWAY", "ROUGH", "BUNKER", "RECOVERY", "FRINGE", "GREEN"];
-
-type KeyboardAwareBottomBarState = {
-  keyboardOverlap: number;
-  vvHeight: number;
-  vvOffsetTop: number;
-  isKeyboardOpen: boolean;
-  bottomPadPx: number;
-};
-
-type KeyboardBarHook = KeyboardAwareBottomBarState & {
-  handleInputFocus: (el: HTMLElement | null) => void;
-  handleInputBlur: () => void;
-};
-
-function useKeyboardBarOffset(barHeight: number): KeyboardBarHook {
-  const [state, setState] = useState<KeyboardAwareBottomBarState>({
-    keyboardOverlap: 0,
-    vvHeight: 0,
-    vvOffsetTop: 0,
-    isKeyboardOpen: false,
-    bottomPadPx: Math.max(140, barHeight),
-  });
-  const overlapRef = useRef(0);
-  const rafUpdateRef = useRef(0);
-  const settleFrameRef = useRef(0);
-  const focusedElRef = useRef<HTMLElement | null>(null);
-  const baselineInnerHeightRef = useRef(0);
-  const safeBottomRef = useRef(0);
-  const focusHandlerRef = useRef<(el: HTMLElement | null) => void>(() => {});
-  const blurHandlerRef = useRef<() => void>(() => {});
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    baselineInnerHeightRef.current = window.innerHeight;
-    const root = document.documentElement;
-    const DEBUG_KEYBOARD = false;
-
-    const readSafeBottom = () => {
-      const cssSafe = Number.parseFloat(
-        getComputedStyle(root).getPropertyValue("--safe-bottom") || "0",
-      );
-      if (Number.isFinite(cssSafe) && cssSafe > 0) return cssSafe;
-      const bodySafe = Number.parseFloat(getComputedStyle(document.body).paddingBottom || "0");
-      return Number.isFinite(bodySafe) ? bodySafe : 0;
-    };
-
-    const update = () => {
-      safeBottomRef.current = readSafeBottom();
-      const vv = window.visualViewport;
-      const fallbackKb = Math.max(0, baselineInnerHeightRef.current - window.innerHeight);
-      if (!vv) {
-        const nextState: KeyboardAwareBottomBarState = {
-          keyboardOverlap: fallbackKb,
-          vvHeight: window.innerHeight,
-          vvOffsetTop: 0,
-          isKeyboardOpen: fallbackKb > 0,
-          bottomPadPx: Math.max(140, barHeight + safeBottomRef.current + fallbackKb),
-        };
-        overlapRef.current = nextState.keyboardOverlap;
-        setState((prev) =>
-          prev.keyboardOverlap === nextState.keyboardOverlap &&
-          prev.vvHeight === nextState.vvHeight &&
-          prev.vvOffsetTop === nextState.vvOffsetTop &&
-          prev.isKeyboardOpen === nextState.isKeyboardOpen &&
-          prev.bottomPadPx === nextState.bottomPadPx
-            ? prev
-            : nextState,
-        );
-        return;
-      }
-      const kbPx = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
-      const nextState: KeyboardAwareBottomBarState = {
-        keyboardOverlap: kbPx,
-        vvHeight: vv.height,
-        vvOffsetTop: vv.offsetTop,
-        isKeyboardOpen: kbPx > 0,
-        bottomPadPx: Math.max(140, barHeight + safeBottomRef.current + kbPx),
-      };
-      overlapRef.current = kbPx;
-      if (DEBUG_KEYBOARD) {
-        // eslint-disable-next-line no-console
-        console.debug("[keyboard]", nextState);
-      }
-      setState((prev) =>
-        prev.keyboardOverlap === nextState.keyboardOverlap &&
-        prev.vvHeight === nextState.vvHeight &&
-        prev.vvOffsetTop === nextState.vvOffsetTop &&
-        prev.isKeyboardOpen === nextState.isKeyboardOpen &&
-        prev.bottomPadPx === nextState.bottomPadPx
-          ? prev
-          : nextState,
-      );
-    };
-
-    const schedule = () => {
-      if (rafUpdateRef.current) return;
-      rafUpdateRef.current = window.requestAnimationFrame(() => {
-        rafUpdateRef.current = 0;
-        update();
-      });
-    };
-
-    const ensureFocusedVisible = () => {
-      const el = focusedElRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const vv = window.visualViewport;
-      const viewportBottom = vv ? vv.height + vv.offsetTop : window.innerHeight;
-      const blockedBottom = barHeight + safeBottomRef.current + overlapRef.current + 12;
-      const limitBottom = viewportBottom - blockedBottom;
-      if (rect.bottom > limitBottom) {
-        el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
-      }
-    };
-
-    const startSettleLoop = () => {
-      if (settleFrameRef.current) {
-        window.cancelAnimationFrame(settleFrameRef.current);
-      }
-      const start = performance.now();
-      const tick = () => {
-        update();
-        if (performance.now() - start < 250) {
-          settleFrameRef.current = window.requestAnimationFrame(tick);
-          return;
-        }
-        settleFrameRef.current = 0;
-        window.requestAnimationFrame(ensureFocusedVisible);
-      };
-      settleFrameRef.current = window.requestAnimationFrame(tick);
-    };
-
-    focusHandlerRef.current = (el) => {
-      focusedElRef.current = el;
-      update();
-      startSettleLoop();
-    };
-    blurHandlerRef.current = () => {
-      focusedElRef.current = null;
-      if (settleFrameRef.current) {
-        window.cancelAnimationFrame(settleFrameRef.current);
-        settleFrameRef.current = 0;
-      }
-      update();
-    };
-
-    schedule();
-    const vv = window.visualViewport;
-    vv?.addEventListener("resize", schedule);
-    vv?.addEventListener("scroll", schedule);
-    window.addEventListener("resize", schedule);
-
-    return () => {
-      vv?.removeEventListener("resize", schedule);
-      vv?.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      if (rafUpdateRef.current) {
-        window.cancelAnimationFrame(rafUpdateRef.current);
-      }
-      if (settleFrameRef.current) {
-        window.cancelAnimationFrame(settleFrameRef.current);
-      }
-      focusHandlerRef.current = () => {};
-      blurHandlerRef.current = () => {};
-    };
-  }, [barHeight]);
-
-  const handleInputFocus = useCallback((el: HTMLElement | null) => {
-    focusHandlerRef.current(el);
-  }, []);
-
-  const handleInputBlur = useCallback(() => {
-    blurHandlerRef.current();
-  }, []);
-
-  return { ...state, handleInputFocus, handleInputBlur };
-}
 
 function getSortedShotsForHole(round: Round, holeNumber: number): Shot[] {
   return round.shots
@@ -237,7 +58,6 @@ export default function RoundPage() {
   const [showCustomPutts, setShowCustomPutts] = useState(false);
   const [customPutts, setCustomPutts] = useState<string>("");
   const [puttsCount, setPuttsCount] = useState<number | null>(null);
-  const [footerPortalReady, setFooterPortalReady] = useState(false);
   const [saveNudge, setSaveNudge] = useState(false);
   const puttingMode = startLie === "GREEN";
   const endLieGreen = puttingMode && puttsCount !== null;
@@ -245,12 +65,8 @@ export default function RoundPage() {
   const startDistanceRef = useRef<HTMLInputElement>(null);
   const endDistanceRef = useRef<HTMLInputElement>(null);
   const lastEndDistanceRef = useRef("");
-  const footerRef = useRef<HTMLDivElement>(null);
   const [shotsExpanded, setShotsExpanded] = useState(false);
   const [expandedHoles, setExpandedHoles] = useState<Record<number, boolean>>({});
-  const [footerHeight, setFooterHeight] = useState(96);
-  const { keyboardOverlap, bottomPadPx, handleInputFocus, handleInputBlur } =
-    useKeyboardBarOffset(footerHeight);
 
   const roundEnded = Boolean(round?.endedAt);
   const isEnded = roundEnded;
@@ -276,32 +92,14 @@ export default function RoundPage() {
     setEndLieSelection(null);
   }, [puttingMode]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setFooterPortalReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!footerPortalReady) return;
-    const footerEl = footerRef.current;
-    if (!footerEl) return;
-
-    const measure = () => {
-      const height = footerEl.getBoundingClientRect().height;
-      if (Number.isFinite(height) && height > 0) {
-        setFooterHeight(height);
-      }
-    };
-
-    measure();
-    window.addEventListener("resize", measure);
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
-    observer?.observe(footerEl);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [footerPortalReady]);
+  const scrollInputIntoView = (el: HTMLElement | null): void => {
+    if (!el) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        el.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      });
+    });
+  };
 
   const handleDistanceSubmit = (): void => {
     handleSaveShot();
@@ -312,18 +110,18 @@ export default function RoundPage() {
     if (!puttingMode) {
       const el = startDistanceRef.current;
       el?.focus();
-      handleInputFocus(el);
+      scrollInputIntoView(el);
     }
-  }, [startLie, puttingMode, isEnded, handleInputFocus]);
+  }, [startLie, puttingMode, isEnded]);
 
   useEffect(() => {
     if (isEnded) return;
     if (!endLieGreen && !puttingMode) {
       const el = endDistanceRef.current;
       el?.focus();
-      handleInputFocus(el);
+      scrollInputIntoView(el);
     }
-  }, [endLieGreen, puttingMode, isEnded, handleInputFocus]);
+  }, [endLieGreen, puttingMode, isEnded]);
 
   useEffect(() => {
     if (!saveNudge) return;
@@ -621,17 +419,7 @@ export default function RoundPage() {
 
   const footer = (
     <div
-      ref={footerRef}
       className="mobile-action-bar-shell"
-      style={{
-        "--kb": `${keyboardOverlap}px`,
-        "--bar-h": `${footerHeight}px`,
-        position: "fixed",
-        left: 0,
-        right: 0,
-        zIndex: 2147483000,
-        pointerEvents: "auto",
-      } as CSSProperties}
     >
       <div className="mobile-action-bar">
         {isEnded ? (
@@ -713,17 +501,8 @@ export default function RoundPage() {
   );
 
   return (
-      <div
-        className="page mobile-action-spacer"
-        style={
-          {
-            "--kb": `${keyboardOverlap}px`,
-            "--bar-h": `${footerHeight}px`,
-            "--bottom-pad": `${bottomPadPx}px`,
-          } as CSSProperties
-        }
-      >
-      <div className="round-main-content">
+      <div className="page round-sticky-page">
+      <div className="round-main-content round-sticky-content">
         <div className="top-header">
           <div className="top-row container header-wrap">
             <div className="header-left">
@@ -761,8 +540,7 @@ export default function RoundPage() {
         <div
           className="container"
           style={{
-            paddingBottom:
-              "max(var(--bottom-pad, 140px), calc(var(--bar-h, 96px) + var(--safe-bottom, 0px) + var(--kb, 0px)))",
+            paddingBottom: 120,
           }}
         >
         <form
@@ -837,9 +615,8 @@ export default function RoundPage() {
                         setStartDistance(clampDistanceText(e.target.value, startLie === "GREEN"))
                       }
                       onFocus={() =>
-                        handleInputFocus(startDistanceRef.current)
+                        scrollInputIntoView(startDistanceRef.current)
                       }
-                      onBlur={handleInputBlur}
                       disabled={isEnded}
                       ref={startDistanceRef}
                       onKeyDown={(e) => {
@@ -871,7 +648,7 @@ export default function RoundPage() {
                       if (isEnded) return;
                       setEndLieSelection(value);
                       endDistanceRef.current?.focus();
-                      handleInputFocus(endDistanceRef.current);
+                      scrollInputIntoView(endDistanceRef.current);
                     }}
                     ariaLabel="End lie"
                   />
@@ -903,11 +680,8 @@ export default function RoundPage() {
                       setEndDistanceText(String(clamped));
                       setEndDistanceValue(clamped);
                     }}
-                    onBlur={() => {
-                      setSaveNudge(true);
-                      handleInputBlur();
-                    }}
-                    onFocus={() => handleInputFocus(endDistanceRef.current)}
+                    onBlur={() => setSaveNudge(true)}
+                    onFocus={() => scrollInputIntoView(endDistanceRef.current)}
                     disabled={isEnded}
                     ref={endDistanceRef}
                     onKeyDown={(e) => {
@@ -964,8 +738,7 @@ export default function RoundPage() {
                           onChange={(e) =>
                             setCustomPutts(clampDistanceText(e.target.value, false))
                           }
-                          onFocus={(e) => handleInputFocus(e.currentTarget)}
-                          onBlur={handleInputBlur}
+                          onFocus={(e) => scrollInputIntoView(e.currentTarget)}
                           disabled={isEnded}
                         />
                       </label>
@@ -1107,8 +880,8 @@ export default function RoundPage() {
           <div className="muted">View all holes on Summary.</div>
         </Card>
       </div>
+      {footer}
       </div>
-      {footerPortalReady ? createPortal(footer, document.body) : null}
 
       {showEndRoundModal && (
         <div className="modal-backdrop">
