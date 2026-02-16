@@ -265,7 +265,7 @@ export default function SummaryPage() {
           </Card>
         )}
 
-        <Card title="Round Performance" subtitle="Strokes Gained vs PGA Tour">
+        <Card title="Round Performance" subtitle="Performance vs baseline">
           <div className="hero">
             <div
               className={`stat-total stat-total-xl ${

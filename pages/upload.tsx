@@ -201,8 +201,8 @@ export default function UploadPage() {
               <Button onClick={onUpload} loading={isUploading} disabled={selectedFiles.length === 0}>
                 Upload Plans
               </Button>
-              <Link href="/">
-                <Button variant="secondary">Back Home</Button>
+              <Link href="/chat">
+                <Button variant="secondary">Go to Chat</Button>
               </Link>
             </div>
 

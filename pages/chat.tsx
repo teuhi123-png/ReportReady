@@ -161,8 +161,8 @@ export default function ChatPage() {
               <Button onClick={onAsk} loading={false} disabled={!question.trim() || isAsking}>
                 Ask
               </Button>
-              <Link href="/">
-                <Button variant="secondary">Back Home</Button>
+              <Link href="/upload">
+                <Button variant="secondary">Go to Uploads</Button>
               </Link>
             </div>
 

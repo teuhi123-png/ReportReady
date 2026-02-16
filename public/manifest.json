@@ -1,6 +1,7 @@
 {
-  "name": "Strokes Gained Tracker",
-  "short_name": "SG Tracker",
+  "name": "SiteMind AI Assistant",
+  "short_name": "SiteMind AI",
+  "description": "Upload site plan PDFs and chat with SiteMind AI Assistant.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f1115",

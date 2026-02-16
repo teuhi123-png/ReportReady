@@ -1,4 +1,4 @@
-# Strokes Gained Tracker
+# SiteMind AI Assistant
 
 ## Offline / PWA
 
