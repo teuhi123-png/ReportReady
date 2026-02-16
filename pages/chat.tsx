@@ -136,7 +136,7 @@ export default function ChatPage() {
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <Link href="/upload">
+                <Link href="/uploads">
                   <Button variant="secondary">Go to Uploads</Button>
                 </Link>
                 <Button variant="secondary" onClick={onLogout}>
@@ -161,7 +161,7 @@ export default function ChatPage() {
               <Button onClick={onAsk} loading={false} disabled={!question.trim() || isAsking}>
                 Ask
               </Button>
-              <Link href="/upload">
+              <Link href="/uploads">
                 <Button variant="secondary">Go to Uploads</Button>
               </Link>
             </div>

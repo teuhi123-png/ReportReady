@@ -35,7 +35,7 @@ export default function UploadPage() {
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
     if (!signedInEmail) {
-      void router.replace(`/login?next=${encodeURIComponent("/upload")}`);
+      void router.replace(`/login?next=${encodeURIComponent("/uploads")}`);
       return;
     }
     setEmail(signedInEmail);
@@ -128,7 +128,7 @@ export default function UploadPage() {
 
   function onLogout(): void {
     clearSignedInEmail();
-    void router.push("/login?next=/upload");
+    void router.push("/login?next=/uploads");
   }
 
   return (

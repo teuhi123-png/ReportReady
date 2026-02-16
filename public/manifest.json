@@ -1,6 +1,6 @@
 {
   "name": "SiteMind AI Assistant",
-  "short_name": "SiteMind AI",
+  "short_name": "SiteMind",
   "description": "Upload site plan PDFs and chat with SiteMind AI Assistant.",
   "start_url": "/",
   "display": "standalone",

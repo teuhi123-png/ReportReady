@@ -1,7 +1,7 @@
 {
-  "name": "strokes-gained-app",
+  "name": "sitemind-ai-assistant",
   "version": "1.0.0",
-  "description": "",
+  "description": "SiteMind AI Assistant web app",
   "main": "index.js",
   "directories": {
     "lib": "lib"

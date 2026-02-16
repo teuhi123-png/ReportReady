@@ -9,8 +9,8 @@ export default function LoginPage() {
   const [error, setError] = useState("");
 
   const nextPath = useMemo(() => {
-    const raw = typeof router.query.next === "string" ? router.query.next : "/upload";
-    return raw.startsWith("/") ? raw : "/upload";
+    const raw = typeof router.query.next === "string" ? router.query.next : "/uploads";
+    return raw.startsWith("/") ? raw : "/uploads";
   }, [router.query.next]);
 
   function onSubmit(): void {
