@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { listUploadedPlans } from "../../lib/uploadPlans";
 
 type UploadsResponse =
-  | { files: Array<{ name: string; uploadedAt: string }> }
+  | { files: Array<{ name: string; uploadedAt: string; projectName: string }> }
   | { error: string };
 
 export default async function handler(

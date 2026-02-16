@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/router";
 import type { ChangeEvent } from "react";
 import Button from "../components/ui/Button";
+import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type UploadedPlan = {
   name: string;
   uploadedAt: string;
+  projectName: string;
 };
 
 type UploadApiResponse = {
@@ -20,11 +23,23 @@ type UploadsApiResponse = {
 };
 
 export default function UploadPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [projectName, setProjectName] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedPlan[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingUploads, setIsLoadingUploads] = useState(true);
   const [statusMessage, setStatusMessage] = useState<string>("");
+
+  useEffect(() => {
+    const signedInEmail = readSignedInEmail();
+    if (!signedInEmail) {
+      void router.replace(`/login?next=${encodeURIComponent("/upload")}`);
+      return;
+    }
+    setEmail(signedInEmail);
+  }, [router]);
 
   const selectedSizeMb = useMemo(() => {
     const bytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
@@ -74,6 +89,7 @@ export default function UploadPage() {
 
     try {
       const formData = new FormData();
+      formData.append("projectName", projectName.trim());
       selectedFiles.forEach((file) => {
         formData.append("plans", file, file.name);
       });
@@ -93,10 +109,14 @@ export default function UploadPage() {
         throw new Error(payload.error ?? "Upload failed");
       }
 
+      const savedProjectName = payload.files[0]?.projectName ?? "Untitled Project";
       setStatusMessage(
-        `Successfully uploaded ${payload.files.length} PDF plan${payload.files.length === 1 ? "" : "s"}.`
+        `Successfully uploaded ${payload.files.length} PDF plan${
+          payload.files.length === 1 ? "" : "s"
+        } to ${savedProjectName}.`
       );
       setSelectedFiles([]);
+      setProjectName("");
       await loadUploads();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed";
@@ -106,19 +126,46 @@ export default function UploadPage() {
     }
   }
 
+  function onLogout(): void {
+    clearSignedInEmail();
+    void router.push("/login?next=/upload");
+  }
+
   return (
     <main className="page">
       <div className="container">
         <section className="card">
           <div className="card-body" style={{ display: "grid", gap: 14 }}>
-            <div>
-              <h1 className="h1" style={{ marginBottom: 8 }}>
-                Upload Site Plans
-              </h1>
-              <p className="muted" style={{ margin: 0 }}>
-                Upload one or more PDF files and keep a running list of plans saved on the server.
-              </p>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <div>
+                <h1 className="h1" style={{ marginBottom: 8 }}>
+                  Upload Site Plans
+                </h1>
+                <p className="muted" style={{ margin: 0 }}>
+                  Signed in as {email || "..."}. Upload PDFs and open them directly from the list.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Link href="/chat">
+                  <Button variant="secondary">Go to Chat</Button>
+                </Link>
+                <Button variant="secondary" onClick={onLogout}>
+                  Log out
+                </Button>
+              </div>
             </div>
+
+            <label className="input-field" htmlFor="project-name">
+              <div className="label">Project name</div>
+              <input
+                id="project-name"
+                type="text"
+                className="input"
+                placeholder="Project name (optional)"
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+              />
+            </label>
 
             <label className="input-field" htmlFor="site-plan-upload">
               <div className="label">PDF files</div>
@@ -190,8 +237,14 @@ export default function UploadPage() {
                         flexWrap: "wrap",
                       }}
                     >
-                      <strong style={{ wordBreak: "break-word" }}>{file.name}</strong>
-                      <span className="muted">{new Date(file.uploadedAt).toLocaleString()}</span>
+                      <div style={{ display: "grid", gap: 3 }}>
+                        <strong style={{ wordBreak: "break-word" }}>{file.name}</strong>
+                        <span className="muted">Project: {file.projectName}</span>
+                        <span className="muted">{new Date(file.uploadedAt).toLocaleString()}</span>
+                      </div>
+                      <a href={`/api/uploads/${encodeURIComponent(file.name)}`} target="_blank" rel="noreferrer">
+                        <Button variant="secondary">View Plan</Button>
+                      </a>
                     </div>
                   </div>
                 ))}
