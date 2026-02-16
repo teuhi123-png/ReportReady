@@ -33,7 +33,7 @@ function useVisualViewportKeyboardOffset(): { keyboardOffset: number; safeAreaBo
         setKeyboardOffset(0);
         return;
       }
-      const kbPx = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      const kbPx = Math.max(0, window.innerHeight - vv.height);
       setKeyboardOffset(kbPx);
       root.style.setProperty("--kb", `${kbPx}px`);
     };
