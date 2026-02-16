@@ -1,5 +1,9 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { createUploadedFileStream, hasUploadedFile } from "../../../lib/uploadPlans";
+import {
+  createUploadedFileStream,
+  getUploadedFileUrl,
+  hasUploadedFile,
+} from "../../../lib/uploadPlans";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse): Promise<void> {
   if (req.method !== "GET") {
@@ -17,6 +21,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!(await hasUploadedFile(fileName))) {
     res.status(404).json({ error: "File not found" });
+    return;
+  }
+
+  const blobUrl = await getUploadedFileUrl(fileName);
+  if (blobUrl) {
+    res.redirect(blobUrl);
     return;
   }
 

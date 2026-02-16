@@ -4,7 +4,7 @@ import path from "path";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { PDFParse } from "pdf-parse";
 import OpenAI from "openai";
-import { getUploadsDir, listUploadedPlans } from "../../lib/uploadPlans";
+import { getUploadedFileUrl, getUploadsDir, listUploadedPlans } from "../../lib/uploadPlans";
 
 type ChatResponse = { answer: string } | { error: string };
 
@@ -101,8 +101,10 @@ export default async function handler(
 
     const chunks: Chunk[] = [];
     for (const file of uploads) {
-      const fullPath = path.join(uploadsDir, file.name);
-      const buffer = await readFile(fullPath);
+      const blobUrl = await getUploadedFileUrl(file.name);
+      const buffer = blobUrl
+        ? Buffer.from(await (await fetch(blobUrl)).arrayBuffer())
+        : await readFile(path.join(uploadsDir, file.name));
       const parser = new PDFParse({ data: buffer });
       const parsed = await parser.getText();
       await parser.destroy();

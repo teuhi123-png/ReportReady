@@ -2,6 +2,7 @@ import type { IncomingMessage } from "http";
 import { createReadStream } from "fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
+import { head, list, put } from "@vercel/blob";
 
 export type UploadedPlan = {
   name: string;
@@ -29,6 +30,12 @@ type UploadMetadata = Record<string, UploadMetadataEntry>;
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const METADATA_FILE = "metadata.json";
+const BLOB_UPLOAD_PREFIX = "uploads";
+const BLOB_META_PREFIX = `${BLOB_UPLOAD_PREFIX}/meta`;
+
+function usesBlobStorage(): boolean {
+  return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+}
 
 export function getUploadsDir(): string {
   if (process.env.VERCEL) return "/tmp/uploads";
@@ -37,6 +44,14 @@ export function getUploadsDir(): string {
 
 function getMetadataPath(uploadsDir: string): string {
   return path.join(uploadsDir, METADATA_FILE);
+}
+
+function getBlobPdfPath(fileName: string): string {
+  return `${BLOB_UPLOAD_PREFIX}/${path.basename(fileName)}`;
+}
+
+function getBlobMetaPath(fileName: string): string {
+  return `${BLOB_META_PREFIX}/${path.basename(fileName)}.json`;
 }
 
 function sanitizeFilename(name: string): string {
@@ -147,7 +162,42 @@ export function getUploadedFilePath(fileName: string): string {
   return path.join(getUploadsDir(), safeName);
 }
 
+async function readBlobMetadata(fileName: string): Promise<UploadMetadataEntry | null> {
+  const metaPath = getBlobMetaPath(fileName);
+  try {
+    const info = await head(metaPath);
+    const response = await fetch(info.url);
+    if (!response.ok) return null;
+    const parsed = (await response.json()) as UploadMetadataEntry;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 export async function listUploadedPlans(): Promise<UploadedPlan[]> {
+  if (usesBlobStorage()) {
+    const listed = await list({ prefix: `${BLOB_UPLOAD_PREFIX}/` });
+    const pdfBlobs = listed.blobs.filter(
+      (blob) => blob.pathname.startsWith(`${BLOB_UPLOAD_PREFIX}/`) && blob.pathname.endsWith(".pdf")
+    );
+
+    const plans = await Promise.all(
+      pdfBlobs.map(async (blob) => {
+        const fileName = path.basename(blob.pathname);
+        const meta = await readBlobMetadata(fileName);
+        return {
+          name: fileName,
+          uploadedAt: meta?.uploadedAt ?? blob.uploadedAt.toISOString(),
+          projectName: meta?.projectName ?? "Untitled Project",
+        };
+      })
+    );
+
+    plans.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    return plans;
+  }
+
   const uploadsDir = await ensureUploadsDir();
   const metadata = await readMetadata(uploadsDir);
   const entries = await readdir(uploadsDir, { withFileTypes: true });
@@ -191,9 +241,46 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
     throw new Error("Only PDF files are allowed");
   }
 
+  const projectName = sanitizeProjectName(parsed.fields.projectName ?? "");
+
+  if (usesBlobStorage()) {
+    const saved = await Promise.all(
+      parsed.files.map(async (file) => {
+        const safeName = sanitizeFilename(file.filename);
+        const finalName = safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
+        const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${finalName}`;
+        const uploadedAt = new Date().toISOString();
+
+        await put(getBlobPdfPath(uniqueName), file.data, {
+          access: "public",
+          addRandomSuffix: false,
+          contentType: "application/pdf",
+        });
+
+        await put(
+          getBlobMetaPath(uniqueName),
+          JSON.stringify({ projectName, uploadedAt } satisfies UploadMetadataEntry),
+          {
+            access: "public",
+            addRandomSuffix: false,
+            contentType: "application/json",
+          }
+        );
+
+        return {
+          name: uniqueName,
+          uploadedAt,
+          projectName,
+        };
+      })
+    );
+
+    saved.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    return saved;
+  }
+
   const uploadsDir = await ensureUploadsDir();
   const metadata = await readMetadata(uploadsDir);
-  const projectName = sanitizeProjectName(parsed.fields.projectName ?? "");
 
   const saved = await Promise.all(
     parsed.files.map(async (file) => {
@@ -225,6 +312,15 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
 }
 
 export async function hasUploadedFile(fileName: string): Promise<boolean> {
+  if (usesBlobStorage()) {
+    try {
+      await head(getBlobPdfPath(fileName));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   try {
     const filePath = getUploadedFilePath(fileName);
     const fileStat = await stat(filePath);
@@ -232,6 +328,19 @@ export async function hasUploadedFile(fileName: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export async function getUploadedFileUrl(fileName: string): Promise<string | null> {
+  if (usesBlobStorage()) {
+    try {
+      const info = await head(getBlobPdfPath(fileName));
+      return info.url;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 export function createUploadedFileStream(fileName: string) {
