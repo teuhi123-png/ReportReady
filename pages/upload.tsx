@@ -23,6 +23,11 @@ type UploadsApiResponse = {
   error?: string;
 };
 
+function isJsonResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type") ?? "";
+  return contentType.toLowerCase().includes("application/json");
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -50,13 +55,20 @@ export default function UploadPage() {
   async function loadUploads(): Promise<void> {
     try {
       const response = await fetch("/api/uploads");
-      const payload = (await response.json()) as UploadsApiResponse;
-      if (!response.ok || payload.error) {
-        throw new Error(payload.error ?? "Failed loading uploads");
+      if (!response.ok) {
+        throw new Error("Could not load uploaded files yet.");
       }
+
+      if (!isJsonResponse(response)) {
+        throw new Error("Could not load uploaded files yet.");
+      }
+
+      const payload = (await response.json()) as UploadsApiResponse;
+      if (payload.error) throw new Error(payload.error);
       setUploadedFiles(payload.files ?? []);
-    } catch {
-      setStatusMessage("Could not load uploaded files yet.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not load uploaded files yet.";
+      setStatusMessage(message);
     } finally {
       setIsLoadingUploads(false);
     }
@@ -99,12 +111,16 @@ export default function UploadPage() {
         method: "POST",
         body: formData,
       });
-      const payload = (await response.json()) as UploadApiResponse;
 
       if (!response.ok) {
-        const message = payload.error ?? "Upload failed";
-        throw new Error(message);
+        throw new Error("Upload failed. Please try again.");
       }
+
+      if (!isJsonResponse(response)) {
+        throw new Error("Upload failed due to an invalid server response.");
+      }
+
+      const payload = (await response.json()) as UploadApiResponse;
 
       if (!payload.ok || !payload.files) {
         throw new Error(payload.error ?? "Upload failed");

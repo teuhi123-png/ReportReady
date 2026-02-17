@@ -15,17 +15,19 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<UploadResponse>
 ): Promise<void> {
-  if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
-    res.status(405).json({ ok: false, error: "Method not allowed" });
-    return;
-  }
-
   try {
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST");
+      res.status(405).json({ ok: false, error: "Method not allowed" });
+      return;
+    }
+
     const files = await savePdfUploadRequest(req);
     res.status(200).json({ ok: true, files });
   } catch (error) {
+    console.error("Upload API error:", error);
     const message = error instanceof Error ? error.message : "Upload failed";
-    res.status(400).json({ ok: false, error: message });
+    const status = message.includes("Method not allowed") ? 405 : 400;
+    res.status(status).json({ ok: false, error: message });
   }
 }

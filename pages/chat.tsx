@@ -41,6 +41,11 @@ function renderWithBold(text: string): ReactNode {
   );
 }
 
+function isJsonResponse(response: Response): boolean {
+  const contentType = response.headers.get("content-type") ?? "";
+  return contentType.toLowerCase().includes("application/json");
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -94,9 +99,17 @@ export default function ChatPage() {
         body: JSON.stringify({ question: trimmed }),
       });
 
-      const payload = (await response.json()) as ChatApiResponse;
       if (!response.ok) {
-        throw new Error(payload.error ?? "Request failed");
+        throw new Error("Chat is unavailable right now. Please try again.");
+      }
+
+      if (!isJsonResponse(response)) {
+        throw new Error("Chat returned an unexpected response. Please try again.");
+      }
+
+      const payload = (await response.json()) as ChatApiResponse;
+      if (typeof payload.answer !== "string") {
+        throw new Error(payload.error ?? "Chat returned an invalid response.");
       }
 
       setHistory((prev) => [
@@ -104,7 +117,7 @@ export default function ChatPage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: payload.answer ?? "No answer returned.",
+          content: payload.answer,
           createdAt: Date.now(),
         },
       ]);

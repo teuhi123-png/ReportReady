@@ -1,17 +1,26 @@
 # SiteMind AI Assistant
 
-## Offline / PWA
+## API routes used by the app
 
-This app is configured as a PWA using `next-pwa`.
+- Upload page:
+  - `POST /api/upload`
+  - `GET /api/uploads`
+- Chat page:
+  - `POST /api/chat`
 
-### Test Offline
-1. Run a production build:
-   ```bash
-   npm run build
-   npm run start
-   ```
-2. Open the app in Chrome/Safari.
-3. Load a few pages to warm the cache.
-4. Go offline in DevTools (or disable network) and refresh.
+All API error paths return JSON.
 
-You should still see the app shell, and previously visited pages should load. If a route hasn’t been cached yet, you’ll see the offline fallback page.
+## Vercel production env checklist
+
+Required:
+- `OPENAI_API_KEY`
+- `BLOB_READ_WRITE_TOKEN`
+
+Optional:
+- KV vars: none currently used (metadata is persisted in Blob as JSON alongside uploaded PDFs).
+
+## Upload persistence model
+
+- PDFs are stored in Vercel Blob.
+- Metadata persisted per upload: `name`, `projectName`, `url`, `uploadedAt`.
+- On Vercel, upload/list/chat requires `BLOB_READ_WRITE_TOKEN` and does not rely on local filesystem persistence.
