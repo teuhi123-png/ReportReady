@@ -14,6 +14,7 @@ type ChatApiResponse = {
 
 type UploadedPlan = {
   name: string;
+  pdfFileName?: string;
   pdfKey?: string;
   pathname?: string;
   uploadedAt?: string;
@@ -66,9 +67,9 @@ export default function ChatPage() {
   const [tick, setTick] = useState(0);
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [selectedFileName, setSelectedFileName] = useState("No PDF selected");
-  const [selectedPdfKey, setSelectedPdfKey] = useState("");
+  const [selectedPdf, setSelectedPdf] = useState("");
   const [activePlanName, setActivePlanName] = useState("");
-  const [pdfKeyFromQuery, setPdfKeyFromQuery] = useState("");
+  const [pdfFromQuery, setPdfFromQuery] = useState("");
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -83,7 +84,7 @@ export default function ChatPage() {
     if (!email) return;
 
     const loadLatestUpload = async () => {
-      if (pdfKeyFromQuery) return;
+      if (pdfFromQuery) return;
 
       try {
         const response = await fetch(`/api/uploads?userEmail=${encodeURIComponent(email)}`);
@@ -103,26 +104,26 @@ export default function ChatPage() {
 
         const first = parsed?.files?.[0];
         setSelectedFileName(first?.name ?? "No PDF selected");
-        setSelectedPdfKey(first?.pdfKey ?? first?.pathname ?? "");
+        setSelectedPdf(first?.pdfFileName ?? first?.name ?? "");
       } catch (error) {
         console.error("Failed to load latest uploaded PDF:", error);
         setSelectedFileName("No PDF selected");
-        setSelectedPdfKey("");
+        setSelectedPdf("");
       }
     };
 
     void loadLatestUpload();
-  }, [email, pdfKeyFromQuery]);
+  }, [email, pdfFromQuery]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const pdfKey = params.get("pdfKey");
+    const pdfFileName = params.get("pdfFileName");
     const planName = params.get("name");
 
-    if (pdfKey) {
-      setPdfKeyFromQuery(pdfKey);
-      setSelectedPdfKey(pdfKey);
+    if (pdfFileName) {
+      setPdfFromQuery(pdfFileName);
+      setSelectedPdf(pdfFileName);
     }
     if (planName) {
       setSelectedFileName(planName);
@@ -153,8 +154,8 @@ export default function ChatPage() {
     setTick(0);
 
     try {
-      const pdfKey = selectedPdfKey.trim();
-      if (!pdfKey) {
+      const selectedPdfName = selectedPdf.trim();
+      if (!selectedPdfName) {
         throw new Error("No plan selected. Go to Uploads and choose a PDF.");
       }
 
@@ -165,17 +166,28 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: input,
-          pdfKey,
+          pdfFileName: selectedPdf || selectedFileName,
+          userEmail: email,
         }),
       });
 
-      const data = (await res.json()) as ChatApiResponse;
-      if (!res.ok) {
-        throw new Error(data?.error || `HTTP ${res.status}`);
+      const contentType = (res.headers.get("content-type") || "").toLowerCase();
+      const raw = await res.text();
+      let data: ChatApiResponse | null = null;
+      if (contentType.includes("application/json")) {
+        try {
+          data = raw ? (JSON.parse(raw) as ChatApiResponse) : null;
+        } catch {
+          data = null;
+        }
       }
 
-      const reply = data?.reply;
-      if (!reply) throw new Error("Empty response from server");
+      if (!res.ok) {
+        throw new Error(data?.error || raw || `HTTP ${res.status}`);
+      }
+
+      const assistantText = data?.answer ?? data?.reply;
+      if (!assistantText) throw new Error("Empty response from server");
 
       setHistory((prev) => [
         ...prev,
@@ -188,7 +200,7 @@ export default function ChatPage() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: reply,
+          content: assistantText,
           createdAt: Date.now(),
         },
       ]);
@@ -202,7 +214,7 @@ export default function ChatPage() {
   }
 
   useEffect(() => {
-    if (!pdfKeyFromQuery || !selectedPdfKey || isAsking || history.length > 0) return;
+    if (!pdfFromQuery || !selectedPdf || isAsking || history.length > 0) return;
 
     const autoQuestion = "Analyse this building plan and summarise key construction details.";
     const userMessage: ChatMessage = {
@@ -226,7 +238,8 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             message: autoQuestion,
-            pdfKey: selectedPdfKey,
+            pdfFileName: selectedPdf || selectedFileName,
+            userEmail: email,
           }),
         });
 
@@ -244,7 +257,7 @@ export default function ChatPage() {
           throw new Error(payload?.error ?? raw ?? `HTTP ${res.status}`);
         }
 
-        const assistantContent = payload?.reply ?? payload?.answer ?? payload?.error ?? "Request failed";
+        const assistantContent = payload?.answer ?? payload?.reply ?? payload?.error ?? "Request failed";
         setHistory((prev) => [
           ...prev,
           {
@@ -263,7 +276,7 @@ export default function ChatPage() {
     };
 
     void runAutoAnalysis();
-  }, [pdfKeyFromQuery, selectedPdfKey, isAsking, history.length]);
+  }, [pdfFromQuery, selectedPdf, isAsking, history.length, email]);
 
   function onLogout(): void {
     clearSignedInEmail();
