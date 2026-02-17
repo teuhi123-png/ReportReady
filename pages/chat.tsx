@@ -42,18 +42,34 @@ function renderWithBold(text: string): ReactNode {
   );
 }
 
-function isJsonResponse(response: Response): boolean {
-  const contentType = response.headers.get("content-type") ?? "";
-  return contentType.toLowerCase().includes("application/json");
-}
+async function requestChat(payload: { question: string }): Promise<ChatApiResponse> {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
 
-async function readErrorText(response: Response): Promise<string> {
+  const raw = await response.text();
+  let data: ChatApiResponse | null = null;
+
   try {
-    const text = await response.text();
-    return text.trim() || `Request failed (${response.status})`;
+    data = raw ? (JSON.parse(raw) as ChatApiResponse) : null;
   } catch {
-    return `Request failed (${response.status})`;
+    data = null;
   }
+
+  if (!response.ok) {
+    console.error("CHAT ERROR", response.status, raw);
+    throw new Error(data?.error || raw || `HTTP ${response.status}`);
+  }
+
+  if (!data) {
+    throw new Error("Empty response from server");
+  }
+
+  return data;
 }
 
 export default function ChatPage() {
@@ -101,34 +117,7 @@ export default function ChatPage() {
     setTick(0);
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ question: trimmed }),
-      });
-
-      if (!response.ok) {
-        const details = await readErrorText(response);
-        console.error("Chat API non-OK response:", response.status, details);
-        throw new Error("Chat is unavailable right now. Please try again.");
-      }
-
-      if (!isJsonResponse(response)) {
-        const details = await readErrorText(response);
-        console.error("Chat API non-JSON response:", details);
-        throw new Error("Chat returned an unexpected response. Please try again.");
-      }
-
-      let payload: ChatApiResponse;
-      try {
-        payload = (await response.json()) as ChatApiResponse;
-      } catch (parseError) {
-        const details = await readErrorText(response);
-        console.error("Chat API JSON parse error:", parseError, details);
-        throw new Error("Chat returned an unexpected response. Please try again.");
-      }
+      const payload = await requestChat({ question: trimmed });
 
       if (typeof payload.answer !== "string") {
         console.error("Chat API invalid JSON payload:", payload);
