@@ -1,69 +1,108 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import OpenAI from "openai";
-import fs from "fs";
-import path from "path";
+import { list } from "@vercel/blob";
 
 type ChatResponse = {
-  reply: string;
+  answer: string;
   error?: string;
 };
 
 type ChatBody = {
   message?: string;
-  pdfKey?: string;
+  pdfFileName?: string;
+  userEmail?: string;
 };
+
+type PlanTextStore = Record<string, Record<string, string>>;
+type PlanSelectionStore = Record<string, string>;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __PLAN_TEXT_STORE__: PlanTextStore | undefined;
+  // eslint-disable-next-line no-var
+  var __PLAN_SELECTION_STORE__: PlanSelectionStore | undefined;
+}
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-function isSafePdfKey(pdfKey: string): boolean {
-  if (!pdfKey.startsWith("uploads/")) return false;
-  if (pdfKey.includes("..")) return false;
-  return true;
+function safePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._@-]/g, "_");
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<ChatResponse>): Promise<void> {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
-    res.status(405).json({ reply: "", error: "Method not allowed" });
+    res.status(405).json({ answer: "", error: "Method not allowed" });
     return;
   }
 
   try {
     const body = req.body as ChatBody;
     const message = String(body?.message ?? "").trim();
-    const pdfKey = String(body?.pdfKey ?? "").trim();
+    const safeEmail = safePathSegment(String(body?.userEmail ?? "anonymous").trim() || "anonymous");
+    const requestedPdfName = String(body?.pdfFileName ?? "").trim();
+    const safeRequestedPdfName = requestedPdfName ? safePathSegment(requestedPdfName) : "";
 
     if (!message) {
-      res.status(400).json({ reply: "", error: "message is required" });
+      res.status(400).json({ answer: "", error: "message is required" });
       return;
     }
 
-    if (!pdfKey) {
-      res.status(400).json({ reply: "", error: "pdfKey is required" });
-      return;
-    }
+    const selectedPdfName =
+      safeRequestedPdfName || globalThis.__PLAN_SELECTION_STORE__?.[safeEmail] || "";
 
-    if (!isSafePdfKey(pdfKey)) {
-      res.status(400).json({ reply: "", error: "Invalid pdfKey path" });
-      return;
-    }
-
-    const txtPath = path.join(process.cwd(), `${pdfKey}.txt`);
-    if (!fs.existsSync(txtPath)) {
-      res.status(404).json({
-        reply: "",
-        error: `Extracted plan text file is missing at ${txtPath}`,
+    if (!selectedPdfName) {
+      res.status(400).json({
+        answer: "",
+        error: "No PDF selected. Choose a PDF first.",
       });
       return;
     }
 
-    const pdfText = fs.readFileSync(txtPath, "utf8").trim();
-    if (!pdfText) {
-      res.status(400).json({ reply: "", error: "Extracted plan text file is empty" });
-      return;
+    let planText = globalThis.__PLAN_TEXT_STORE__?.[safeEmail]?.[selectedPdfName];
+
+    if (!planText) {
+      const prefix = `uploads/${safeEmail}/`;
+
+      const { blobs } = await list({ prefix });
+
+      const txtName = `${selectedPdfName}.txt`;
+
+      const txtBlob = blobs.find(
+        (b) => b.pathname === `${prefix}${txtName}`
+      );
+
+      if (!txtBlob) {
+        res.status(400).json({
+          answer: "",
+          error: `Missing extracted text in Blob: ${prefix}${txtName}`,
+        });
+        return;
+      }
+
+      const txtRes = await fetch(txtBlob.url);
+
+      if (!txtRes.ok) {
+        res.status(500).json({
+          answer: "",
+          error: `Failed to fetch plan text (${txtRes.status})`,
+        });
+        return;
+      }
+
+      planText = (await txtRes.text()).trim();
+
+      globalThis.__PLAN_TEXT_STORE__ = globalThis.__PLAN_TEXT_STORE__ || {};
+      globalThis.__PLAN_TEXT_STORE__[safeEmail] =
+        globalThis.__PLAN_TEXT_STORE__[safeEmail] || {};
+
+      globalThis.__PLAN_TEXT_STORE__[safeEmail][selectedPdfName] = planText;
     }
+
+    globalThis.__PLAN_SELECTION_STORE__ = globalThis.__PLAN_SELECTION_STORE__ || {};
+    globalThis.__PLAN_SELECTION_STORE__[safeEmail] = selectedPdfName;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -74,7 +113,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         },
         {
           role: "system",
-          content: pdfText,
+          content: planText,
         },
         {
           role: "user",
@@ -84,11 +123,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     });
 
     res.status(200).json({
-      reply: completion.choices[0]?.message?.content ?? "Not stated in the plan.",
+      answer: completion.choices[0]?.message?.content ?? "Not stated in the plan.",
     });
   } catch (error: unknown) {
     res.status(500).json({
-      reply: "",
+      answer: "",
       error: error instanceof Error ? error.message : "Server error",
     });
   }
