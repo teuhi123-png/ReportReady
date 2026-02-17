@@ -7,6 +7,7 @@ import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type UploadedPlan = {
   name: string;
+  pathname: string;
   uploadedAt: string;
   projectName: string;
   url: string;
@@ -19,6 +20,7 @@ type UploadApiResponse = {
 };
 
 type UploadsApiResponse = {
+  success?: boolean;
   files?: UploadedPlan[];
   error?: string;
 };
@@ -64,6 +66,7 @@ export default function UploadPage() {
       }
 
       const payload = (await response.json()) as UploadsApiResponse;
+      if (payload.success === false) throw new Error(payload.error ?? "Could not load uploaded files yet.");
       if (payload.error) throw new Error(payload.error);
       setUploadedFiles(payload.files ?? []);
     } catch (error) {

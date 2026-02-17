@@ -13,6 +13,7 @@ type ChatApiResponse = {
 
 type UploadedPlan = {
   name: string;
+  pathname: string;
   uploadedAt: string;
   projectName: string;
   url: string;

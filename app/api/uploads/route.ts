@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
-import { list } from "@vercel/blob";
+import { listUploadedPlans } from "../../../lib/uploadPlans";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const result = await list();
+    const { searchParams } = new URL(req.url);
+    const userEmail = searchParams.get("userEmail") ?? undefined;
+    const projectName = searchParams.get("projectName") ?? undefined;
+
+    const files = await listUploadedPlans({ userEmail, projectName });
+
     return NextResponse.json({
       success: true,
-      blobs: result.blobs.map((blob) => ({
-        pathname: blob.pathname,
-        url: blob.url,
-        size: blob.size,
-      })),
+      files,
     });
   } catch (error) {
     console.error("UPLOADS ERROR:", error);

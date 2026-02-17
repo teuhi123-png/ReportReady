@@ -7,6 +7,7 @@ import { PDFParse } from "pdf-parse";
 
 export type UploadedPlan = {
   name: string;
+  pathname: string;
   uploadedAt: string;
   projectName: string;
   url: string;
@@ -30,6 +31,7 @@ type ParsedMultipartData = {
 
 type UploadMetadataEntry = {
   name?: string;
+  pathname?: string;
   projectName: string;
   uploadedAt: string;
   url?: string;
@@ -242,6 +244,7 @@ async function listUploadedPlanRecords(filters?: UploadListFilters): Promise<Upl
 
         const record: UploadedPlanRecord = {
           name: fileName,
+          pathname: meta?.pathname ?? blob.pathname,
           uploadedAt: meta?.uploadedAt ?? blob.uploadedAt.toISOString(),
           projectName: meta?.projectName ?? "Untitled Project",
           url: meta?.url ?? blob.url,
@@ -271,6 +274,7 @@ async function listUploadedPlanRecords(filters?: UploadListFilters): Promise<Upl
 
       return {
         name: entry.name,
+        pathname: meta?.pathname ?? entry.name,
         uploadedAt: meta?.uploadedAt ?? fileStat.mtime.toISOString(),
         projectName: meta?.projectName ?? "Untitled Project",
         url: meta?.url ?? `/api/uploads/${encodeURIComponent(entry.name)}`,
@@ -287,8 +291,9 @@ async function listUploadedPlanRecords(filters?: UploadListFilters): Promise<Upl
 
 export async function listUploadedPlans(filters?: UploadListFilters): Promise<UploadedPlan[]> {
   const records = await listUploadedPlanRecords(filters);
-  return records.map(({ name, uploadedAt, projectName, url }) => ({
+  return records.map(({ name, pathname, uploadedAt, projectName, url }) => ({
     name,
+    pathname,
     uploadedAt,
     projectName,
     url,
@@ -356,7 +361,8 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
         const uploadedAt = new Date().toISOString();
         const extractedText = await extractPdfText(file.data);
 
-        const uploaded = await put(getBlobPdfPath(uniqueName), file.data, {
+        const pathname = getBlobPdfPath(uniqueName);
+        const uploaded = await put(pathname, file.data, {
           access: "public",
           addRandomSuffix: false,
           contentType: "application/pdf",
@@ -368,6 +374,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
           JSON.stringify(
             {
               name: uniqueName,
+              pathname,
               projectName,
               uploadedAt,
               url,
@@ -384,6 +391,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
 
         return {
           name: uniqueName,
+          pathname,
           uploadedAt,
           projectName,
           url,
@@ -412,6 +420,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
 
       metadata[uniqueName] = {
         name: uniqueName,
+        pathname: uniqueName,
         projectName,
         uploadedAt,
         url: `/api/uploads/${encodeURIComponent(uniqueName)}`,
@@ -421,6 +430,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
 
       return {
         name: uniqueName,
+        pathname: uniqueName,
         uploadedAt,
         projectName,
         url: `/api/uploads/${encodeURIComponent(uniqueName)}`,
