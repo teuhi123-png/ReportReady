@@ -49,6 +49,11 @@ function renderWithBold(text: string): ReactNode {
   );
 }
 
+function looksLikeJson(response: Response): boolean {
+  const contentType = response.headers.get("content-type") ?? "";
+  return contentType.toLowerCase().includes("application/json");
+}
+
 async function requestChat(payload: { question: string; userEmail: string }): Promise<ChatApiResponse> {
   const response = await fetch("/api/chat", {
     method: "POST",
@@ -61,10 +66,12 @@ async function requestChat(payload: { question: string; userEmail: string }): Pr
   const raw = await response.text();
   let data: ChatApiResponse | null = null;
 
-  try {
-    data = raw ? (JSON.parse(raw) as ChatApiResponse) : null;
-  } catch {
-    data = null;
+  if (looksLikeJson(response)) {
+    try {
+      data = raw ? (JSON.parse(raw) as ChatApiResponse) : null;
+    } catch {
+      data = null;
+    }
   }
 
   if (!response.ok) {
@@ -105,10 +112,17 @@ export default function ChatPage() {
       try {
         const response = await fetch(`/api/uploads?userEmail=${encodeURIComponent(email)}`);
         const raw = await response.text();
-        const parsed = raw ? (JSON.parse(raw) as { files?: UploadedPlan[]; error?: string }) : null;
+        let parsed: { files?: UploadedPlan[]; error?: string } | null = null;
+        if (looksLikeJson(response)) {
+          try {
+            parsed = raw ? (JSON.parse(raw) as { files?: UploadedPlan[]; error?: string }) : null;
+          } catch {
+            parsed = null;
+          }
+        }
 
         if (!response.ok) {
-          throw new Error(parsed?.error || "Could not load uploaded PDFs.");
+          throw new Error(parsed?.error || raw || "Could not load uploaded PDFs.");
         }
 
         const first = parsed?.files?.[0];
