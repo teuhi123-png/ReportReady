@@ -22,6 +22,7 @@ type UploadApiResponse = {
 type UploadsApiResponse = {
   success?: boolean;
   files?: UploadedPlan[];
+  items?: UploadedPlan[];
   error?: string;
 };
 
@@ -59,7 +60,7 @@ export default function UploadPage() {
     return selectedFiles.reduce((sum, file) => sum + file.size, 0);
   }, [selectedFiles]);
 
-  async function loadUploads(currentEmail: string): Promise<void> {
+  async function fetchUploadedPDFs(currentEmail: string): Promise<void> {
     try {
       const response = await fetch(`/api/uploads?userEmail=${encodeURIComponent(currentEmail)}`);
       if (!response.ok) {
@@ -73,7 +74,7 @@ export default function UploadPage() {
       const payload = (await response.json()) as UploadsApiResponse;
       if (payload.success === false) throw new Error(payload.error ?? "Could not load uploaded files yet.");
       if (payload.error) throw new Error(payload.error);
-      setUploadedFiles(payload.files ?? []);
+      setUploadedFiles(payload.files ?? payload.items ?? []);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not load uploaded files yet.";
       setStatusMessage(message);
@@ -85,7 +86,7 @@ export default function UploadPage() {
   useEffect(() => {
     if (!email) return;
     setIsLoadingUploads(true);
-    void loadUploads(email);
+    void fetchUploadedPDFs(email);
   }, [email]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
@@ -138,7 +139,7 @@ export default function UploadPage() {
       );
       setSelectedFiles([]);
       setProjectName("");
-      await loadUploads(email);
+      await fetchUploadedPDFs(email);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed";
       setStatusMessage(message);

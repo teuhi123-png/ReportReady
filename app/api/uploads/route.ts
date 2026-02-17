@@ -75,16 +75,24 @@ export async function GET(req: NextRequest) {
     const results = await list({ prefix, limit: 100 });
 
     // return newest first
-    const items = (results.blobs || [])
-      .map((b) => ({
-        url: b.url,
-        pathname: b.pathname,
-        size: b.size,
-        uploadedAt: b.uploadedAt,
-      }))
+    const files = (results.blobs || [])
+      .map((b) => {
+        const parts = b.pathname.split("/");
+        const filename = parts[parts.length - 1] ?? b.pathname;
+        const projectName = parts[2] && parts[2] !== "no-project" ? parts[2] : "Untitled Project";
+
+        return {
+          name: filename.replace(/^\d+-/, ""),
+          projectName,
+          url: b.url,
+          pathname: b.pathname,
+          size: b.size,
+          uploadedAt: b.uploadedAt,
+        };
+      })
       .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
 
-    return Response.json({ success: true, items });
+    return Response.json({ success: true, files });
   } catch (err: any) {
     console.error("LIST ERROR:", err);
     return Response.json({ success: false, error: err?.message || "List failed" }, { status: 500 });
