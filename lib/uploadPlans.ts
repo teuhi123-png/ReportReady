@@ -306,6 +306,18 @@ export async function getLatestUploadedPlanForUser(
   return records[0] ?? null;
 }
 
+export async function getUploadedPlanByNameOrLatest(planName?: string): Promise<UploadedPlanRecord | null> {
+  const records = await listUploadedPlanRecords();
+  if (records.length === 0) return null;
+
+  if (planName) {
+    const found = records.find((record) => record.name === planName);
+    if (found) return found;
+  }
+
+  return records[0] ?? null;
+}
+
 export async function savePdfUploadRequest(req: IncomingMessage): Promise<UploadedPlan[]> {
   assertBlobConfiguredInProduction();
 

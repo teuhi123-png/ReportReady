@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { getLatestUploadedPlanForUser } from "../../../lib/uploadPlans";
+import { getUploadedPlanByNameOrLatest } from "../../../lib/uploadPlans";
 
 export const runtime = "nodejs";
 
@@ -61,22 +61,14 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json()) as {
       question?: string;
-      userEmail?: string;
-      projectName?: string;
+      pdfId?: string | null;
     };
 
     const question = (body.question ?? "").trim();
-    const userEmail = (body.userEmail ?? "").trim().toLowerCase();
-    const projectName = (body.projectName ?? "").trim();
+    const pdfId = typeof body.pdfId === "string" ? body.pdfId.trim() : "";
 
     if (!question) {
       return Response.json({ error: "Question is required." } satisfies ChatError, { status: 400 });
-    }
-
-    if (!userEmail) {
-      return Response.json({ error: "Signed-in user email is required." } satisfies ChatError, {
-        status: 400,
-      });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -92,7 +84,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const latestPlan = await getLatestUploadedPlanForUser(userEmail, projectName || undefined);
+    const latestPlan = await getUploadedPlanByNameOrLatest(pdfId || undefined);
     if (!latestPlan) {
       return Response.json({ answer: "No documents uploaded yet." } satisfies ChatSuccess);
     }

@@ -54,38 +54,6 @@ function looksLikeJson(response: Response): boolean {
   return contentType.toLowerCase().includes("application/json");
 }
 
-async function requestChat(payload: { question: string; userEmail: string }): Promise<ChatApiResponse> {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const raw = await response.text();
-  let data: ChatApiResponse | null = null;
-
-  if (looksLikeJson(response)) {
-    try {
-      data = raw ? (JSON.parse(raw) as ChatApiResponse) : null;
-    } catch {
-      data = null;
-    }
-  }
-
-  if (!response.ok) {
-    console.error("CHAT ERROR", response.status, raw);
-    throw new Error(data?.error || raw || `HTTP ${response.status}`);
-  }
-
-  if (!data) {
-    throw new Error("Empty response from server");
-  }
-
-  return data;
-}
-
 export default function ChatPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -95,6 +63,7 @@ export default function ChatPage() {
   const [tick, setTick] = useState(0);
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [selectedFileName, setSelectedFileName] = useState("No PDF selected");
+  const [selectedPdfId, setSelectedPdfId] = useState("");
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -127,9 +96,11 @@ export default function ChatPage() {
 
         const first = parsed?.files?.[0];
         setSelectedFileName(first?.name ?? "No PDF selected");
+        setSelectedPdfId(first?.name ?? "");
       } catch (error) {
         console.error("Failed to load latest uploaded PDF:", error);
         setSelectedFileName("No PDF selected");
+        setSelectedPdfId("");
       }
     };
 
@@ -163,7 +134,34 @@ export default function ChatPage() {
     setTick(0);
 
     try {
-      const payload = await requestChat({ question: trimmed, userEmail: email });
+      const input = trimmed;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: input,
+          pdfId: selectedPdfId || null,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+
+      let data: ChatApiResponse | null = null;
+      if (looksLikeJson(res)) {
+        data = (await res.json()) as ChatApiResponse;
+      } else {
+        const text = await res.text();
+        throw new Error(text || "Non-JSON response from /api/chat");
+      }
+
+      if (!data) throw new Error("Empty response from server");
+
+      const payload = data;
       const assistantContent = payload?.answer ?? payload?.error ?? "No answer returned.";
 
       setHistory((prev) => [
