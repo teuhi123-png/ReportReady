@@ -1,32 +1,25 @@
 import { NextResponse } from "next/server";
 import { list } from "@vercel/blob";
 
-export async function GET(req: Request) {
+export const runtime = "nodejs";
+
+export async function GET() {
   try {
-
-    const { searchParams } = new URL(req.url);
-    const userEmail = searchParams.get("userEmail");
-
-    if (!userEmail) {
-      return NextResponse.json([]);
-    }
-
-    const blobs = await list();
-
-    const userFiles = blobs.blobs.filter(blob =>
-      blob.pathname.includes(userEmail)
-    );
-
-    return NextResponse.json(userFiles);
-
+    const result = await list();
+    return NextResponse.json({
+      success: true,
+      blobs: result.blobs.map((blob) => ({
+        pathname: blob.pathname,
+        url: blob.url,
+        size: blob.size,
+      })),
+    });
   } catch (error) {
-
     console.error("UPLOADS ERROR:", error);
-
+    const message = error instanceof Error ? error.message : "Failed to fetch uploads";
     return NextResponse.json(
-      { error: "Failed to fetch uploads" },
+      { success: false, error: message },
       { status: 500 }
     );
-
   }
 }
