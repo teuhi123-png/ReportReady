@@ -3,7 +3,9 @@ import { PDFParse } from "pdf-parse";
 import OpenAI from "openai";
 import { listUploadedPlans } from "../../lib/uploadPlans";
 
-type ChatResponse = { answer: string } | { error: string };
+type ChatResponse =
+  | { ok: true; answer: string }
+  | { ok: false; error: string };
 
 type Chunk = {
   id: string;
@@ -75,30 +77,30 @@ export default async function handler(
   try {
     if (req.method !== "POST") {
       res.setHeader("Allow", "POST");
-      sendJson(res, 405, { error: "Method not allowed" });
+      sendJson(res, 405, { ok: false, error: "Method not allowed" });
       return;
     }
 
     const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
     if (!question) {
-      sendJson(res, 400, { error: "Question is required" });
+      sendJson(res, 400, { ok: false, error: "Question is required" });
       return;
     }
 
     if (process.env.VERCEL && !process.env.BLOB_READ_WRITE_TOKEN) {
-      sendJson(res, 500, { error: "BLOB_READ_WRITE_TOKEN is required in production." });
+      sendJson(res, 500, { ok: false, error: "BLOB_READ_WRITE_TOKEN is required in production." });
       return;
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      sendJson(res, 500, { error: "OPENAI_API_KEY missing" });
+      sendJson(res, 500, { ok: false, error: "OPENAI_API_KEY is missing in server environment." });
       return;
     }
 
     const uploads = await listUploadedPlans();
     if (uploads.length === 0) {
-      sendJson(res, 200, { answer: NO_DOCUMENTS_ANSWER });
+      sendJson(res, 200, { ok: true, answer: NO_DOCUMENTS_ANSWER });
       return;
     }
 
@@ -129,7 +131,7 @@ export default async function handler(
     }
 
     if (chunks.length === 0) {
-      sendJson(res, 200, { answer: "No readable text found in uploaded documents." });
+      sendJson(res, 200, { ok: true, answer: "No readable text found in uploaded documents." });
       return;
     }
 
@@ -173,10 +175,10 @@ export default async function handler(
     });
 
     const answer = completion.choices?.[0]?.message?.content?.trim() ?? "No answer returned.";
-    sendJson(res, 200, { answer });
+    sendJson(res, 200, { ok: true, answer });
   } catch (err: unknown) {
     console.error("Chat API error:", err);
     const message = err instanceof Error ? err.message : "Unexpected server error";
-    sendJson(res, 500, { error: message });
+    sendJson(res, 500, { ok: false, error: message });
   }
 }

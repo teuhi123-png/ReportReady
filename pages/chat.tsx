@@ -6,6 +6,7 @@ import Button from "../components/ui/Button";
 import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type ChatApiResponse = {
+  ok?: boolean;
   answer?: string;
   error?: string;
 };
@@ -44,6 +45,15 @@ function renderWithBold(text: string): ReactNode {
 function isJsonResponse(response: Response): boolean {
   const contentType = response.headers.get("content-type") ?? "";
   return contentType.toLowerCase().includes("application/json");
+}
+
+async function readErrorText(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    return text.trim() || `Request failed (${response.status})`;
+  } catch {
+    return `Request failed (${response.status})`;
+  }
 }
 
 export default function ChatPage() {
@@ -100,15 +110,28 @@ export default function ChatPage() {
       });
 
       if (!response.ok) {
+        const details = await readErrorText(response);
+        console.error("Chat API non-OK response:", response.status, details);
         throw new Error("Chat is unavailable right now. Please try again.");
       }
 
       if (!isJsonResponse(response)) {
+        const details = await readErrorText(response);
+        console.error("Chat API non-JSON response:", details);
         throw new Error("Chat returned an unexpected response. Please try again.");
       }
 
-      const payload = (await response.json()) as ChatApiResponse;
+      let payload: ChatApiResponse;
+      try {
+        payload = (await response.json()) as ChatApiResponse;
+      } catch (parseError) {
+        const details = await readErrorText(response);
+        console.error("Chat API JSON parse error:", parseError, details);
+        throw new Error("Chat returned an unexpected response. Please try again.");
+      }
+
       if (typeof payload.answer !== "string") {
+        console.error("Chat API invalid JSON payload:", payload);
         throw new Error(payload.error ?? "Chat returned an invalid response.");
       }
 
