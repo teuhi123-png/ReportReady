@@ -8,9 +8,13 @@ const openai = new OpenAI({
 
 export async function POST(req: Request) {
   try {
-
-
-    const { message, planUrl } = await req.json()
+    const body = await req.json()
+    const planUrl = body.planUrl
+    const message =
+      body.message ||
+      body.question ||
+      body.prompt ||
+      ""
 
 
     if (!message) {
