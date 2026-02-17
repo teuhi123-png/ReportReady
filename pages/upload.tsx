@@ -7,9 +7,9 @@ import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type UploadedPlan = {
   name: string;
-  pathname: string;
-  uploadedAt: string;
-  projectName: string;
+  pathname?: string;
+  uploadedAt?: string;
+  projectName?: string;
   url: string;
 };
 
@@ -35,6 +35,13 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function formatUploadedAt(uploadedAt?: string): string {
+  if (!uploadedAt) return "Unknown upload date";
+  const date = new Date(uploadedAt);
+  if (Number.isNaN(date.getTime())) return "Unknown upload date";
+  return date.toLocaleString();
 }
 
 export default function UploadPage() {
@@ -245,7 +252,7 @@ export default function UploadPage() {
               <div style={{ display: "grid", gap: 8 }}>
                 {uploadedFiles.map((file) => (
                   <div
-                    key={`${file.name}-${file.uploadedAt}`}
+                    key={`${file.url}-${file.uploadedAt ?? "unknown"}`}
                     className="card"
                     style={{ borderRadius: 12, boxShadow: "none" }}
                   >
@@ -261,8 +268,8 @@ export default function UploadPage() {
                     >
                       <div style={{ display: "grid", gap: 3 }}>
                         <strong style={{ wordBreak: "break-word" }}>{file.name}</strong>
-                        <span className="muted">Project: {file.projectName}</span>
-                        <span className="muted">{new Date(file.uploadedAt).toLocaleString()}</span>
+                        <span className="muted">Project: {file.projectName ?? "Untitled Project"}</span>
+                        <span className="muted">{formatUploadedAt(file.uploadedAt)}</span>
                       </div>
                       <a href={file.url} target="_blank" rel="noreferrer">
                         <Button variant="secondary">View Plan</Button>

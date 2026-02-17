@@ -12,11 +12,17 @@ export async function GET(req: Request) {
 
     const files = blobs
       .filter((blob) => blob.pathname.includes(userEmail))
-      .map((blob) => ({
-        url: blob.url,
-        name: blob.pathname.split("/").pop() ?? blob.pathname,
-        size: blob.size,
-      }));
+      .map((blob) => {
+        const cleanName = (blob.pathname.split("/").pop() ?? blob.pathname).replace(/^\d+-/, "");
+
+        return {
+          url: blob.url,
+          pathname: blob.pathname,
+          name: cleanName,
+          size: blob.size,
+          uploadedAt: blob.uploadedAt,
+        };
+      });
 
     return Response.json({
       success: true,
