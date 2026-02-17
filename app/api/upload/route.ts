@@ -1,7 +1,4 @@
 import { put } from "@vercel/blob";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
-
-(pdfjsLib as any).GlobalWorkerOptions.workerSrc = null;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,24 +44,10 @@ export async function POST(req: Request) {
       const safeEmail = safePathSegment(userEmail || "anonymous");
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${safeFileName}`;
-      const fileBuffer = Buffer.from(await entry.arrayBuffer());
-      const loadingTask = pdfjsLib.getDocument({
-        data: fileBuffer,
-        useWorkerFetch: false,
-        isEvalSupported: false,
-        useSystemFonts: true
-      });
-      const pdf = await loadingTask.promise;
-      let pdfText = "";
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        pdfText += content.items.map((item:any)=>item.str).join(" ") + "\n";
-      }
-      pdfText = pdfText.trim();
+      const pdfText = String(formData.get(`text:${entry.name}`) || "").trim();
 
       if (!pdfText) {
-        return Response.json({ success: false, error: "Could not extract text from PDF" }, { status: 400 });
+        return Response.json({ success: false, error: "No extracted text received" }, { status: 400 });
       }
 
       const blob = await put(pathname, entry, { access: "public" });
