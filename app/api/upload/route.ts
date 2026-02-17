@@ -1,5 +1,5 @@
 import { put } from "@vercel/blob";
-import * as pdfParse from "pdf-parse";
+import * as pdfjsLib from "pdfjs-dist";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +25,19 @@ function safePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._@-]/g, "_");
 }
 
+async function extractTextFromPDF(buffer: Buffer) {
+  const loadingTask = pdfjsLib.getDocument({ data: buffer });
+  const pdf = await loadingTask.promise;
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const strings = content.items.map((item: any) => item.str);
+    text += strings.join(" ") + "\n";
+  }
+  return text;
+}
+
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -46,8 +59,7 @@ export async function POST(req: Request) {
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${safeFileName}`;
       const fileBuffer = Buffer.from(await entry.arrayBuffer());
-      const parsed = await pdfParse.default(fileBuffer);
-      const pdfText = (parsed.text || "").trim();
+      const pdfText = await extractTextFromPDF(fileBuffer);
 
       const blob = await put(pathname, entry, { access: "public" });
       await put(`${pathname}.txt`, new Blob([pdfText], { type: "text/plain" }), { access: "public" });
