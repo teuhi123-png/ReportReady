@@ -83,20 +83,16 @@ export default function UploadPage() {
     void loadUploads(email);
   }, [email]);
 
-  function onFilesChange(event: ChangeEvent<HTMLInputElement>): void {
-    const picked = Array.from(event.target.files ?? []);
-    const pdfOnly = picked.filter(
-      (file) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
-    );
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(event.target.files ?? []);
+    setSelectedFiles(files);
 
-    setSelectedFiles(pdfOnly);
-
-    if (pdfOnly.length === 0) {
+    if (files.length === 0) {
       setStatusMessage("Select one or more PDF files to upload.");
       return;
     }
 
-    setStatusMessage(`${pdfOnly.length} PDF file${pdfOnly.length === 1 ? "" : "s"} selected.`);
+    setStatusMessage(`${files.length} PDF file${files.length === 1 ? "" : "s"} selected.`);
   }
 
   async function onUpload(): Promise<void> {
@@ -110,7 +106,7 @@ export default function UploadPage() {
       formData.append("projectName", projectName.trim());
       formData.append("userEmail", email);
       selectedFiles.forEach((file) => {
-        formData.append("plans", file, file.name);
+        formData.append("files", file);
       });
 
       const response = await fetch("/api/upload", {
@@ -198,7 +194,7 @@ export default function UploadPage() {
                 className="input"
                 accept="application/pdf,.pdf"
                 multiple
-                onChange={onFilesChange}
+                onChange={handleFileChange}
               />
             </label>
 
@@ -211,7 +207,7 @@ export default function UploadPage() {
                   <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
                     {selectedFiles.map((file, index) => (
                       <li key={`${file.name}-${file.size}-${index}`} style={{ wordBreak: "break-word" }}>
-                        {file.name}
+                        {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
                       </li>
                     ))}
                   </ul>
