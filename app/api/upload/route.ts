@@ -1,4 +1,5 @@
 import { put } from "@vercel/blob";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,8 +46,6 @@ export async function POST(req: Request) {
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${safeFileName}`;
       const fileBuffer = Buffer.from(await entry.arrayBuffer());
-      const mod = await import("pdf-parse");
-      const pdfParse = (mod as any).default ?? (mod as any);
       const parsed = await pdfParse(fileBuffer);
       const pdfText = String(parsed?.text ?? "").trim();
 
