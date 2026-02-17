@@ -58,7 +58,7 @@ function looksLikeJson(response: Response): boolean {
 export default function ChatPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
-  const [question, setQuestion] = useState("");
+  const [message, setMessage] = useState("");
   const [status, setStatus] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [tick, setTick] = useState(0);
@@ -139,23 +139,18 @@ export default function ChatPage() {
   const loadingText = useMemo(() => loadingLabel(tick), [tick]);
 
   async function onAsk(): Promise<void> {
-    const trimmed = question.trim();
-    if (!trimmed || isAsking) return;
+    if (isAsking) return;
+    const trimmed = message.trim();
+    if (!trimmed) {
+      setStatus("Please enter a message.");
+      return;
+    }
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: trimmed,
-      createdAt: Date.now(),
-    };
-    setHistory((prev) => [...prev, userMessage]);
-    setQuestion("");
     setIsAsking(true);
     setStatus("");
     setTick(0);
 
     try {
-      const input = trimmed;
       const pdfUrl = selectedPdfUrl.trim();
       if (!pdfUrl) {
         throw new Error("No plan selected. Go to Uploads and choose a PDF.");
@@ -167,22 +162,23 @@ export default function ChatPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          question: input,
+          message: trimmed,
           pdfUrl,
         }),
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
+      const raw = await res.text();
+      let data: ChatApiResponse | null = null;
+      if (raw && looksLikeJson(res)) {
+        try {
+          data = JSON.parse(raw) as ChatApiResponse;
+        } catch {
+          data = null;
+        }
       }
 
-      let data: ChatApiResponse | null = null;
-      if (looksLikeJson(res)) {
-        data = (await res.json()) as ChatApiResponse;
-      } else {
-        const text = await res.text();
-        throw new Error(text || "Non-JSON response from /api/chat");
+      if (!res.ok) {
+        throw new Error(data?.error || raw || `HTTP ${res.status}`);
       }
 
       if (!data) throw new Error("Empty response from server");
@@ -194,11 +190,18 @@ export default function ChatPage() {
         ...prev,
         {
           id: crypto.randomUUID(),
+          role: "user",
+          content: trimmed,
+          createdAt: Date.now(),
+        },
+        {
+          id: crypto.randomUUID(),
           role: "assistant",
           content: assistantContent,
           createdAt: Date.now(),
         },
       ]);
+      setMessage("");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";
       setStatus(message);
@@ -231,7 +234,7 @@ export default function ChatPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            question: autoQuestion,
+            message: autoQuestion,
             pdfUrl: selectedPdfUrl,
           }),
         });
@@ -315,13 +318,13 @@ export default function ChatPage() {
                 className="input"
                 rows={4}
                 placeholder="Ask about dimensions, notes, or plan details..."
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
               />
             </label>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button onClick={onAsk} loading={false} disabled={!question.trim() || isAsking}>
+              <Button onClick={onAsk} loading={false} disabled={isAsking}>
                 Ask
               </Button>
               <Link href="/uploads">
