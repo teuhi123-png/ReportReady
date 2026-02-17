@@ -14,7 +14,7 @@ type UploadedPlan = {
 };
 
 type UploadApiResponse = {
-  ok: boolean;
+  success?: boolean;
   files?: UploadedPlan[];
   error?: string;
 };
@@ -118,25 +118,22 @@ export default function UploadPage() {
         method: "POST",
         body: formData,
       });
-
-      if (!response.ok) {
-        throw new Error("Upload failed. Please try again.");
-      }
-
-      if (!isJsonResponse(response)) {
-        throw new Error("Upload failed due to an invalid server response.");
-      }
-
       const payload = (await response.json()) as UploadApiResponse;
+      console.log("UPLOAD RESPONSE:", payload);
 
-      if (!payload.ok || !payload.files) {
-        throw new Error(payload.error ?? "Upload failed");
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.error ?? "Upload failed. Please try again.");
       }
 
-      const savedProjectName = payload.files[0]?.projectName ?? "Untitled Project";
+      if (payload.success !== true) {
+        throw new Error("Upload failed");
+      }
+
+      const uploaded = payload.files ?? [];
+      const savedProjectName = uploaded[0]?.projectName ?? "Untitled Project";
       setStatusMessage(
-        `Successfully uploaded ${payload.files.length} PDF plan${
-          payload.files.length === 1 ? "" : "s"
+        `Successfully uploaded ${uploaded.length} PDF plan${
+          uploaded.length === 1 ? "" : "s"
         } to ${savedProjectName}.`
       );
       setSelectedFiles([]);
