@@ -45,10 +45,17 @@ export async function POST(req: Request) {
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${safeFileName}`;
       const fileBuffer = Buffer.from(await entry.arrayBuffer());
-      const mod = await import("pdf-parse");
-      const pdfParse = (mod as any).default ?? (mod as any);
-      const parsed = await pdfParse(fileBuffer);
-      const pdfText = String(parsed?.text ?? "").trim();
+      const pdfjs = await import("pdfjs-dist");
+      const loadingTask = pdfjs.getDocument({ data: fileBuffer });
+      const pdf = await loadingTask.promise;
+      let pdfText = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const strings = content.items.map((item: any) => item.str);
+        pdfText += strings.join(" ") + "\n";
+      }
+      pdfText = pdfText.trim();
 
       if (!pdfText) {
         return Response.json({ success: false, error: "Could not extract text from PDF" }, { status: 400 });
