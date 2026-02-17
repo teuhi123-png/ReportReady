@@ -8,6 +8,7 @@ export type UploadedPlan = {
   name: string;
   uploadedAt: string;
   projectName: string;
+  url: string;
 };
 
 type ParsedFilePart = {
@@ -22,8 +23,10 @@ type ParsedMultipartData = {
 };
 
 type UploadMetadataEntry = {
+  name?: string;
   projectName: string;
   uploadedAt: string;
+  url?: string;
 };
 
 type UploadMetadata = Record<string, UploadMetadataEntry>;
@@ -35,6 +38,12 @@ const BLOB_META_PREFIX = `${BLOB_UPLOAD_PREFIX}/meta`;
 
 function usesBlobStorage(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+}
+
+function assertBlobConfiguredInProduction(): void {
+  if (process.env.VERCEL && !usesBlobStorage()) {
+    throw new Error("BLOB_READ_WRITE_TOKEN is required in production for persistent uploads.");
+  }
 }
 
 export function getUploadsDir(): string {
@@ -176,6 +185,8 @@ async function readBlobMetadata(fileName: string): Promise<UploadMetadataEntry |
 }
 
 export async function listUploadedPlans(): Promise<UploadedPlan[]> {
+  assertBlobConfiguredInProduction();
+
   if (usesBlobStorage()) {
     const listed = await list({ prefix: `${BLOB_UPLOAD_PREFIX}/` });
     const pdfBlobs = listed.blobs.filter(
@@ -190,6 +201,7 @@ export async function listUploadedPlans(): Promise<UploadedPlan[]> {
           name: fileName,
           uploadedAt: meta?.uploadedAt ?? blob.uploadedAt.toISOString(),
           projectName: meta?.projectName ?? "Untitled Project",
+          url: meta?.url ?? blob.url,
         };
       })
     );
@@ -212,6 +224,7 @@ export async function listUploadedPlans(): Promise<UploadedPlan[]> {
         name: entry.name,
         uploadedAt: meta?.uploadedAt ?? fileStat.mtime.toISOString(),
         projectName: meta?.projectName ?? "Untitled Project",
+        url: meta?.url ?? `/api/uploads/${encodeURIComponent(entry.name)}`,
       };
     })
   );
@@ -221,6 +234,8 @@ export async function listUploadedPlans(): Promise<UploadedPlan[]> {
 }
 
 export async function savePdfUploadRequest(req: IncomingMessage): Promise<UploadedPlan[]> {
+  assertBlobConfiguredInProduction();
+
   const contentType = req.headers["content-type"] ?? "";
   const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
   const boundary = boundaryMatch?.[1] ?? boundaryMatch?.[2];
@@ -251,15 +266,23 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
         const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${finalName}`;
         const uploadedAt = new Date().toISOString();
 
-        await put(getBlobPdfPath(uniqueName), file.data, {
+        const uploaded = await put(getBlobPdfPath(uniqueName), file.data, {
           access: "public",
           addRandomSuffix: false,
           contentType: "application/pdf",
         });
+        const url = uploaded.url;
 
         await put(
           getBlobMetaPath(uniqueName),
-          JSON.stringify({ projectName, uploadedAt } satisfies UploadMetadataEntry),
+          JSON.stringify(
+            {
+              name: uniqueName,
+              projectName,
+              uploadedAt,
+              url,
+            } satisfies UploadMetadataEntry
+          ),
           {
             access: "public",
             addRandomSuffix: false,
@@ -271,6 +294,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
           name: uniqueName,
           uploadedAt,
           projectName,
+          url,
         };
       })
     );
@@ -294,14 +318,17 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
       const uploadedAt = fileStat.mtime.toISOString();
 
       metadata[uniqueName] = {
+        name: uniqueName,
         projectName,
         uploadedAt,
+        url: `/api/uploads/${encodeURIComponent(uniqueName)}`,
       };
 
       return {
         name: uniqueName,
         uploadedAt,
         projectName,
+        url: `/api/uploads/${encodeURIComponent(uniqueName)}`,
       };
     })
   );
@@ -312,6 +339,8 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
 }
 
 export async function hasUploadedFile(fileName: string): Promise<boolean> {
+  assertBlobConfiguredInProduction();
+
   if (usesBlobStorage()) {
     try {
       await head(getBlobPdfPath(fileName));
@@ -331,6 +360,8 @@ export async function hasUploadedFile(fileName: string): Promise<boolean> {
 }
 
 export async function getUploadedFileUrl(fileName: string): Promise<string | null> {
+  assertBlobConfiguredInProduction();
+
   if (usesBlobStorage()) {
     try {
       const info = await head(getBlobPdfPath(fileName));

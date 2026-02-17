@@ -2,7 +2,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { savePdfUploadRequest } from "../../lib/uploadPlans";
 
 type UploadResponse =
-  | { ok: true; files: Array<{ name: string; uploadedAt: string; projectName: string }> }
+  | { ok: true; files: Array<{ name: string; uploadedAt: string; projectName: string; url: string }> }
   | { ok: false; error: string };
 
 export const config = {

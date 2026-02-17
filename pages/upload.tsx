@@ -9,6 +9,7 @@ type UploadedPlan = {
   name: string;
   uploadedAt: string;
   projectName: string;
+  url: string;
 };
 
 type UploadApiResponse = {
@@ -242,7 +243,7 @@ export default function UploadPage() {
                         <span className="muted">Project: {file.projectName}</span>
                         <span className="muted">{new Date(file.uploadedAt).toLocaleString()}</span>
                       </div>
-                      <a href={`/api/uploads/${encodeURIComponent(file.name)}`} target="_blank" rel="noreferrer">
+                      <a href={file.url} target="_blank" rel="noreferrer">
                         <Button variant="secondary">View Plan</Button>
                       </a>
                     </div>

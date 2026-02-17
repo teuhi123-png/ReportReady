@@ -1,6 +1,21 @@
 import Link from "next/link";
 import Button from "../components/ui/Button";
 
+const features = [
+  {
+    title: "Upload PDFs",
+    description: "Securely upload construction plan sets and keep project files organized.",
+  },
+  {
+    title: "Ask questions",
+    description: "Use natural language to find dimensions, notes, and scope details quickly.",
+  },
+  {
+    title: "Get instant answers",
+    description: "Get fast, contextual responses grounded in your uploaded plan documents.",
+  },
+];
+
 export default function HomePage() {
   return (
     <main className="page">
@@ -16,7 +31,7 @@ export default function HomePage() {
               "radial-gradient(circle at 20% 0%, rgba(37, 99, 235, 0.28), transparent 42%), radial-gradient(circle at 80% 100%, rgba(14, 165, 233, 0.18), transparent 44%)",
           }}
         >
-          <div className="card-body" style={{ display: "grid", gap: 28, padding: "44px 24px 40px" }}>
+          <div className="card-body" style={{ display: "grid", gap: 30, padding: "52px 24px 44px" }}>
             <div style={{ display: "grid", gap: 12, justifyItems: "center" }}>
               <p className="pill" style={{ margin: 0 }}>
                 SiteMind AI
@@ -35,50 +50,27 @@ export default function HomePage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gap: 14,
                 width: "100%",
               }}
             >
-              <div
-                className="card"
-                style={{ boxShadow: "none", borderColor: "rgba(255, 255, 255, 0.12)", textAlign: "left" }}
-              >
-                <div className="card-body" style={{ padding: 16 }}>
-                  <h2 className="h2" style={{ margin: "0 0 6px", fontSize: 18 }}>
-                    Upload PDFs
-                  </h2>
-                  <p className="muted" style={{ margin: 0 }}>
-                    Add plan sets securely and organize files by project.
-                  </p>
-                </div>
-              </div>
-              <div
-                className="card"
-                style={{ boxShadow: "none", borderColor: "rgba(255, 255, 255, 0.12)", textAlign: "left" }}
-              >
-                <div className="card-body" style={{ padding: 16 }}>
-                  <h2 className="h2" style={{ margin: "0 0 6px", fontSize: 18 }}>
-                    Ask questions
-                  </h2>
-                  <p className="muted" style={{ margin: 0 }}>
-                    Query dimensions, notes, and details with natural language.
-                  </p>
-                </div>
-              </div>
-              <div
-                className="card"
-                style={{ boxShadow: "none", borderColor: "rgba(255, 255, 255, 0.12)", textAlign: "left" }}
-              >
-                <div className="card-body" style={{ padding: 16 }}>
-                  <h2 className="h2" style={{ margin: "0 0 6px", fontSize: 18 }}>
-                    Get instant answers
-                  </h2>
-                  <p className="muted" style={{ margin: 0 }}>
-                    Receive fast, contextual responses grounded in your plans.
-                  </p>
-                </div>
-              </div>
+              {features.map((feature) => (
+                <article
+                  key={feature.title}
+                  className="card"
+                  style={{ boxShadow: "none", borderColor: "rgba(255, 255, 255, 0.12)", textAlign: "left" }}
+                >
+                  <div className="card-body" style={{ padding: 16 }}>
+                    <h2 className="h2" style={{ margin: "0 0 6px", fontSize: 18 }}>
+                      {feature.title}
+                    </h2>
+                    <p className="muted" style={{ margin: 0, color: "#cbd5e1" }}>
+                      {feature.description}
+                    </p>
+                  </div>
+                </article>
+              ))}
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
