@@ -271,9 +271,17 @@ export default function UploadPage() {
                         <span className="muted">Project: {file.projectName ?? "Untitled Project"}</span>
                         <span className="muted">{formatUploadedAt(file.uploadedAt)}</span>
                       </div>
-                      <a href={file.url} target="_blank" rel="noreferrer">
-                        <Button variant="secondary">View Plan</Button>
-                      </a>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() =>
+                          void router.push(
+                            `/chat?planUrl=${encodeURIComponent(file.url)}&name=${encodeURIComponent(file.name)}`
+                          )
+                        }
+                      >
+                        View Plan
+                      </Button>
                     </div>
                   </div>
                 ))}

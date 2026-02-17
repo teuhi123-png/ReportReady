@@ -13,9 +13,9 @@ type ChatApiResponse = {
 
 type UploadedPlan = {
   name: string;
-  pathname: string;
-  uploadedAt: string;
-  projectName: string;
+  pathname?: string;
+  uploadedAt?: string;
+  projectName?: string;
   url: string;
 };
 
@@ -64,7 +64,9 @@ export default function ChatPage() {
   const [tick, setTick] = useState(0);
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [selectedFileName, setSelectedFileName] = useState("No PDF selected");
-  const [selectedPdfId, setSelectedPdfId] = useState("");
+  const [selectedPdfUrl, setSelectedPdfUrl] = useState("");
+  const [activePlanName, setActivePlanName] = useState("");
+  const [planUrlFromQuery, setPlanUrlFromQuery] = useState("");
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -79,6 +81,8 @@ export default function ChatPage() {
     if (!email) return;
 
     const loadLatestUpload = async () => {
+      if (planUrlFromQuery) return;
+
       try {
         const response = await fetch(`/api/uploads?userEmail=${encodeURIComponent(email)}`);
         const raw = await response.text();
@@ -97,16 +101,32 @@ export default function ChatPage() {
 
         const first = parsed?.files?.[0];
         setSelectedFileName(first?.name ?? "No PDF selected");
-        setSelectedPdfId(first?.name ?? "");
+        setSelectedPdfUrl(first?.url ?? "");
       } catch (error) {
         console.error("Failed to load latest uploaded PDF:", error);
         setSelectedFileName("No PDF selected");
-        setSelectedPdfId("");
+        setSelectedPdfUrl("");
       }
     };
 
     void loadLatestUpload();
-  }, [email]);
+  }, [email, planUrlFromQuery]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const planUrl = params.get("planUrl");
+    const planName = params.get("name");
+
+    if (planUrl) {
+      setPlanUrlFromQuery(planUrl);
+      setSelectedPdfUrl(planUrl);
+    }
+    if (planName) {
+      setSelectedFileName(planName);
+      setActivePlanName(planName);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isAsking) return;
@@ -136,6 +156,11 @@ export default function ChatPage() {
 
     try {
       const input = trimmed;
+      const pdfUrl = selectedPdfUrl.trim();
+      if (!pdfUrl) {
+        throw new Error("No plan selected. Go to Uploads and choose a PDF.");
+      }
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -143,7 +168,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           question: input,
-          pdfId: selectedPdfId || null,
+          pdfUrl,
         }),
       });
 
@@ -182,6 +207,70 @@ export default function ChatPage() {
     }
   }
 
+  useEffect(() => {
+    if (!planUrlFromQuery || !selectedPdfUrl || isAsking || history.length > 0) return;
+
+    const autoQuestion = "Analyse this building plan and summarise key construction details.";
+    const userMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: autoQuestion,
+      createdAt: Date.now(),
+    };
+
+    const runAutoAnalysis = async () => {
+      setHistory((prev) => [...prev, userMessage]);
+      setIsAsking(true);
+      setStatus("");
+      setTick(0);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            question: autoQuestion,
+            pdfUrl: selectedPdfUrl,
+          }),
+        });
+
+        const raw = await res.text();
+        let payload: ChatApiResponse | null = null;
+        if (raw) {
+          try {
+            payload = JSON.parse(raw) as ChatApiResponse;
+          } catch {
+            payload = null;
+          }
+        }
+
+        if (!res.ok) {
+          throw new Error(payload?.error ?? raw ?? `HTTP ${res.status}`);
+        }
+
+        const assistantContent = payload?.answer ?? payload?.error ?? "No answer returned.";
+        setHistory((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: assistantContent,
+            createdAt: Date.now(),
+          },
+        ]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Request failed";
+        setStatus(message);
+      } finally {
+        setIsAsking(false);
+      }
+    };
+
+    void runAutoAnalysis();
+  }, [planUrlFromQuery, selectedPdfUrl, isAsking, history.length]);
+
   function onLogout(): void {
     clearSignedInEmail();
     void router.push("/login?next=/chat");
@@ -203,6 +292,11 @@ export default function ChatPage() {
                 <p className="muted" style={{ margin: "6px 0 0" }}>
                   Selected PDF: {selectedFileName}
                 </p>
+                {activePlanName && (
+                  <p className="muted" style={{ margin: "6px 0 0" }}>
+                    Analysing: {activePlanName}
+                  </p>
+                )}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <Link href="/uploads">
