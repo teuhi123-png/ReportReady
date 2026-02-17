@@ -1,4 +1,7 @@
 import { put } from "@vercel/blob";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.js";
+
+(pdfjsLib as any).GlobalWorkerOptions.workerSrc = null;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,15 +48,18 @@ export async function POST(req: Request) {
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${safeFileName}`;
       const fileBuffer = Buffer.from(await entry.arrayBuffer());
-      const pdfjs = await import("pdfjs-dist");
-      const loadingTask = pdfjs.getDocument({ data: fileBuffer });
+      const loadingTask = pdfjsLib.getDocument({
+        data: fileBuffer,
+        useWorkerFetch: false,
+        isEvalSupported: false,
+        useSystemFonts: true
+      });
       const pdf = await loadingTask.promise;
       let pdfText = "";
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        const strings = content.items.map((item: any) => item.str);
-        pdfText += strings.join(" ") + "\n";
+        pdfText += content.items.map((item:any)=>item.str).join(" ") + "\n";
       }
       pdfText = pdfText.trim();
 
