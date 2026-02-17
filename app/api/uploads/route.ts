@@ -11,12 +11,13 @@ export async function GET(req: Request) {
     const { blobs } = await list();
 
     const files = blobs
-      .filter((blob) => blob.pathname.includes(userEmail))
+      .filter((blob) => blob.pathname.includes(userEmail) && blob.pathname.toLowerCase().endsWith(".pdf"))
       .map((blob) => {
         const cleanName = (blob.pathname.split("/").pop() ?? blob.pathname).replace(/^\d+-/, "");
 
         return {
           url: blob.url,
+          pdfKey: blob.pathname,
           pathname: blob.pathname,
           name: cleanName,
           size: blob.size,

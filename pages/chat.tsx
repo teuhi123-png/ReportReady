@@ -14,6 +14,7 @@ type ChatApiResponse = {
 
 type UploadedPlan = {
   name: string;
+  pdfKey?: string;
   pathname?: string;
   uploadedAt?: string;
   projectName?: string;
@@ -65,9 +66,9 @@ export default function ChatPage() {
   const [tick, setTick] = useState(0);
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [selectedFileName, setSelectedFileName] = useState("No PDF selected");
-  const [selectedPdfUrl, setSelectedPdfUrl] = useState("");
+  const [selectedPdfKey, setSelectedPdfKey] = useState("");
   const [activePlanName, setActivePlanName] = useState("");
-  const [planUrlFromQuery, setPlanUrlFromQuery] = useState("");
+  const [pdfKeyFromQuery, setPdfKeyFromQuery] = useState("");
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -82,7 +83,7 @@ export default function ChatPage() {
     if (!email) return;
 
     const loadLatestUpload = async () => {
-      if (planUrlFromQuery) return;
+      if (pdfKeyFromQuery) return;
 
       try {
         const response = await fetch(`/api/uploads?userEmail=${encodeURIComponent(email)}`);
@@ -102,26 +103,26 @@ export default function ChatPage() {
 
         const first = parsed?.files?.[0];
         setSelectedFileName(first?.name ?? "No PDF selected");
-        setSelectedPdfUrl(first?.url ?? "");
+        setSelectedPdfKey(first?.pdfKey ?? first?.pathname ?? "");
       } catch (error) {
         console.error("Failed to load latest uploaded PDF:", error);
         setSelectedFileName("No PDF selected");
-        setSelectedPdfUrl("");
+        setSelectedPdfKey("");
       }
     };
 
     void loadLatestUpload();
-  }, [email, planUrlFromQuery]);
+  }, [email, pdfKeyFromQuery]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
-    const planUrl = params.get("planUrl");
+    const pdfKey = params.get("pdfKey");
     const planName = params.get("name");
 
-    if (planUrl) {
-      setPlanUrlFromQuery(planUrl);
-      setSelectedPdfUrl(planUrl);
+    if (pdfKey) {
+      setPdfKeyFromQuery(pdfKey);
+      setSelectedPdfKey(pdfKey);
     }
     if (planName) {
       setSelectedFileName(planName);
@@ -152,6 +153,11 @@ export default function ChatPage() {
     setTick(0);
 
     try {
+      const pdfKey = selectedPdfKey.trim();
+      if (!pdfKey) {
+        throw new Error("No plan selected. Go to Uploads and choose a PDF.");
+      }
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -159,6 +165,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: input,
+          pdfKey,
         }),
       });
 
@@ -195,7 +202,7 @@ export default function ChatPage() {
   }
 
   useEffect(() => {
-    if (!planUrlFromQuery || !selectedPdfUrl || isAsking || history.length > 0) return;
+    if (!pdfKeyFromQuery || !selectedPdfKey || isAsking || history.length > 0) return;
 
     const autoQuestion = "Analyse this building plan and summarise key construction details.";
     const userMessage: ChatMessage = {
@@ -219,7 +226,7 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             message: autoQuestion,
-            pdfUrl: selectedPdfUrl,
+            pdfKey: selectedPdfKey,
           }),
         });
 
@@ -256,7 +263,7 @@ export default function ChatPage() {
     };
 
     void runAutoAnalysis();
-  }, [planUrlFromQuery, selectedPdfUrl, isAsking, history.length]);
+  }, [pdfKeyFromQuery, selectedPdfKey, isAsking, history.length]);
 
   function onLogout(): void {
     clearSignedInEmail();

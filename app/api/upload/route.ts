@@ -1,4 +1,5 @@
 import { put } from "@vercel/blob";
+import { PDFParse } from "pdf-parse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,22 @@ export async function POST(req: Request) {
 
       const safeEmail = userEmail || "anonymous";
       const pathname = `uploads/${safeEmail}/${Date.now()}-${entry.name}`;
+      const fileBuffer = Buffer.from(await entry.arrayBuffer());
+      const parser = new PDFParse({ data: fileBuffer });
+      let pdfText = "";
+      try {
+        const parsed = await parser.getText();
+        pdfText = (parsed.text ?? "").trim();
+      } finally {
+        await parser.destroy();
+      }
+
+      if (!pdfText) {
+        return Response.json({ success: false, error: "Could not extract text from PDF" }, { status: 400 });
+      }
+
       const blob = await put(pathname, entry, { access: "public" });
+      await put(`${pathname}.txt`, pdfText, { access: "public" });
 
       uploadedFiles.push({
         name: entry.name,
