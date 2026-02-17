@@ -55,9 +55,9 @@ function usesBlobStorage(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
 }
 
-function assertBlobConfiguredInProduction(): void {
-  if (process.env.VERCEL && !usesBlobStorage()) {
-    throw new Error("BLOB_READ_WRITE_TOKEN is required in production for persistent uploads.");
+function assertBlobConfigured(): void {
+  if (!usesBlobStorage()) {
+    throw new Error("BLOB_READ_WRITE_TOKEN is required for uploads.");
   }
 }
 
@@ -229,7 +229,7 @@ function matchesFilters(record: UploadedPlanRecord, filters?: UploadListFilters)
 }
 
 async function listUploadedPlanRecords(filters?: UploadListFilters): Promise<UploadedPlanRecord[]> {
-  assertBlobConfiguredInProduction();
+  assertBlobConfigured();
 
   if (usesBlobStorage()) {
     const listed = await list({ prefix: `${BLOB_UPLOAD_PREFIX}/` });
@@ -324,7 +324,7 @@ export async function getUploadedPlanByNameOrLatest(planName?: string): Promise<
 }
 
 export async function savePdfUploadRequest(req: IncomingMessage): Promise<UploadedPlan[]> {
-  assertBlobConfiguredInProduction();
+  assertBlobConfigured();
 
   const contentType = req.headers["content-type"] ?? "";
   const boundaryMatch = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
@@ -444,7 +444,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
 }
 
 export async function hasUploadedFile(fileName: string): Promise<boolean> {
-  assertBlobConfiguredInProduction();
+  assertBlobConfigured();
 
   if (usesBlobStorage()) {
     try {
@@ -465,7 +465,7 @@ export async function hasUploadedFile(fileName: string): Promise<boolean> {
 }
 
 export async function getUploadedFileUrl(fileName: string): Promise<string | null> {
-  assertBlobConfiguredInProduction();
+  assertBlobConfigured();
 
   if (usesBlobStorage()) {
     try {
