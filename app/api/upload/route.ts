@@ -44,10 +44,11 @@ export async function POST(req: Request) {
       const safeEmail = safePathSegment(userEmail || "anonymous");
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${safeFileName}`;
-      const pdfParse = require("pdf-parse");
       const fileBuffer = Buffer.from(await entry.arrayBuffer());
+      const mod = await import("pdf-parse");
+      const pdfParse = (mod as any).default ?? (mod as any);
       const parsed = await pdfParse(fileBuffer);
-      const pdfText = String(parsed?.text || "").trim();
+      const pdfText = String(parsed?.text ?? "").trim();
 
       if (!pdfText) {
         return Response.json({ success: false, error: "Could not extract text from PDF" }, { status: 400 });
