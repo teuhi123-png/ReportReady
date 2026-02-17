@@ -118,18 +118,14 @@ export default function ChatPage() {
 
     try {
       const payload = await requestChat({ question: trimmed });
-
-      if (typeof payload.answer !== "string") {
-        console.error("Chat API invalid JSON payload:", payload);
-        throw new Error(payload.error ?? "Chat returned an invalid response.");
-      }
+      const assistantContent = payload?.answer ?? payload?.error ?? "No answer returned.";
 
       setHistory((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: payload.answer,
+          content: assistantContent,
           createdAt: Date.now(),
         },
       ]);
