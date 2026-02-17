@@ -1,10 +1,7 @@
-import fs from "fs";
-import { readFile } from "fs/promises";
-import path from "path";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { PDFParse } from "pdf-parse";
 import OpenAI from "openai";
-import { getUploadedFileUrl, getUploadsDir, listUploadedPlans } from "../../lib/uploadPlans";
+import { listUploadedPlans } from "../../lib/uploadPlans";
 
 type ChatResponse = { answer: string } | { error: string };
 
@@ -15,6 +12,8 @@ type Chunk = {
   page: number;
   text: string;
 };
+
+const NO_DOCUMENTS_ANSWER = "No documents uploaded yet.";
 
 function splitIntoPages(text: string): string[] {
   const pages = text
@@ -64,6 +63,11 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+function sendJson(res: NextApiResponse<ChatResponse>, status: number, payload: ChatResponse): void {
+  if (res.headersSent) return;
+  res.status(status).json(payload);
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ChatResponse>
@@ -71,51 +75,61 @@ export default async function handler(
   try {
     if (req.method !== "POST") {
       res.setHeader("Allow", "POST");
-      res.status(405).json({ error: "Method not allowed" });
+      sendJson(res, 405, { error: "Method not allowed" });
       return;
     }
 
     const question = typeof req.body?.question === "string" ? req.body.question.trim() : "";
     if (!question) {
-      res.status(400).json({ error: "Question is required" });
+      sendJson(res, 400, { error: "Question is required" });
+      return;
+    }
+
+    if (process.env.VERCEL && !process.env.BLOB_READ_WRITE_TOKEN) {
+      sendJson(res, 500, { error: "BLOB_READ_WRITE_TOKEN is required in production." });
       return;
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      res.status(500).json({ error: "OPENAI_API_KEY missing" });
+      sendJson(res, 500, { error: "OPENAI_API_KEY missing" });
       return;
     }
 
-    const uploadsDir = getUploadsDir();
-    console.log("uploadsDir", uploadsDir);
-    console.log("uploads exists", fs.existsSync(uploadsDir));
-
     const uploads = await listUploadedPlans();
-    const files = uploads.map((entry) => entry.name);
-    console.log("pdf files", files);
     if (uploads.length === 0) {
-      res.status(400).json({ error: "No uploaded PDFs found in /uploads" });
+      sendJson(res, 200, { answer: NO_DOCUMENTS_ANSWER });
       return;
     }
 
     const chunks: Chunk[] = [];
     for (const file of uploads) {
-      const blobUrl = await getUploadedFileUrl(file.name);
-      const buffer = blobUrl
-        ? Buffer.from(await (await fetch(blobUrl)).arrayBuffer())
-        : await readFile(path.join(uploadsDir, file.name));
-      const parser = new PDFParse({ data: buffer });
-      const parsed = await parser.getText();
-      await parser.destroy();
-      const pages = splitIntoPages(parsed.text ?? "");
-      pages.forEach((pageText, idx) => {
-        chunks.push(...chunkPageText(file.name, file.projectName, idx + 1, pageText));
-      });
+      try {
+        const response = await fetch(file.url);
+        if (!response.ok) {
+          console.error(`Failed fetching PDF blob for ${file.name}: ${response.status}`);
+          continue;
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const parser = new PDFParse({ data: buffer });
+
+        try {
+          const parsed = await parser.getText();
+          const pages = splitIntoPages(parsed.text ?? "");
+          pages.forEach((pageText, idx) => {
+            chunks.push(...chunkPageText(file.name, file.projectName, idx + 1, pageText));
+          });
+        } finally {
+          await parser.destroy();
+        }
+      } catch (fileError) {
+        console.error(`Failed processing PDF ${file.name}:`, fileError);
+      }
     }
 
     if (chunks.length === 0) {
-      res.status(400).json({ error: "Uploaded PDFs did not contain readable text." });
+      sendJson(res, 200, { answer: "No readable text found in uploaded documents." });
       return;
     }
 
@@ -159,9 +173,10 @@ export default async function handler(
     });
 
     const answer = completion.choices?.[0]?.message?.content?.trim() ?? "No answer returned.";
-    res.status(200).json({ answer });
+    sendJson(res, 200, { answer });
   } catch (err: unknown) {
-    console.error(err);
-    res.status(500).json({ error: String((err as { message?: string })?.message || err) });
+    console.error("Chat API error:", err);
+    const message = err instanceof Error ? err.message : "Unexpected server error";
+    sendJson(res, 500, { error: message });
   }
 }
