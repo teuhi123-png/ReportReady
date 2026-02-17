@@ -52,9 +52,9 @@ export default function UploadPage() {
     return bytes / (1024 * 1024);
   }, [selectedFiles]);
 
-  async function loadUploads(): Promise<void> {
+  async function loadUploads(currentEmail: string): Promise<void> {
     try {
-      const response = await fetch("/api/uploads");
+      const response = await fetch(`/api/uploads?userEmail=${encodeURIComponent(currentEmail)}`);
       if (!response.ok) {
         throw new Error("Could not load uploaded files yet.");
       }
@@ -75,8 +75,10 @@ export default function UploadPage() {
   }
 
   useEffect(() => {
-    void loadUploads();
-  }, []);
+    if (!email) return;
+    setIsLoadingUploads(true);
+    void loadUploads(email);
+  }, [email]);
 
   function onFilesChange(event: ChangeEvent<HTMLInputElement>): void {
     const picked = Array.from(event.target.files ?? []);
@@ -103,6 +105,7 @@ export default function UploadPage() {
     try {
       const formData = new FormData();
       formData.append("projectName", projectName.trim());
+      formData.append("userEmail", email);
       selectedFiles.forEach((file) => {
         formData.append("plans", file, file.name);
       });
@@ -134,7 +137,7 @@ export default function UploadPage() {
       );
       setSelectedFiles([]);
       setProjectName("");
-      await loadUploads();
+      await loadUploads(email);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed";
       setStatusMessage(message);

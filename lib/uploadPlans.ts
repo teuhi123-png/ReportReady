@@ -3,12 +3,18 @@ import { createReadStream } from "fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
 import { head, list, put } from "@vercel/blob";
+import { PDFParse } from "pdf-parse";
 
 export type UploadedPlan = {
   name: string;
   uploadedAt: string;
   projectName: string;
   url: string;
+};
+
+export type UploadedPlanRecord = UploadedPlan & {
+  userEmail: string;
+  extractedText: string;
 };
 
 type ParsedFilePart = {
@@ -27,9 +33,16 @@ type UploadMetadataEntry = {
   projectName: string;
   uploadedAt: string;
   url?: string;
+  userEmail?: string;
+  extractedText?: string;
 };
 
 type UploadMetadata = Record<string, UploadMetadataEntry>;
+
+type UploadListFilters = {
+  userEmail?: string;
+  projectName?: string;
+};
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const METADATA_FILE = "metadata.json";
@@ -73,10 +86,25 @@ function sanitizeProjectName(value: string): string {
   return normalized.length > 0 ? normalized.slice(0, 120) : "Untitled Project";
 }
 
+function sanitizeUserEmail(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized.slice(0, 254) : "";
+}
+
 function isPdfFile(contentType: string, filename: string): boolean {
   const normalizedType = contentType.toLowerCase();
   const normalizedName = filename.toLowerCase();
   return normalizedType === "application/pdf" || normalizedName.endsWith(".pdf");
+}
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const parsed = await parser.getText();
+    return (parsed.text ?? "").replace(/\s+/g, " ").trim();
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function readRequestBody(req: IncomingMessage): Promise<Buffer> {
@@ -184,7 +212,21 @@ async function readBlobMetadata(fileName: string): Promise<UploadMetadataEntry |
   }
 }
 
-export async function listUploadedPlans(): Promise<UploadedPlan[]> {
+function matchesFilters(record: UploadedPlanRecord, filters?: UploadListFilters): boolean {
+  if (!filters) return true;
+
+  if (filters.userEmail && record.userEmail !== sanitizeUserEmail(filters.userEmail)) {
+    return false;
+  }
+
+  if (filters.projectName && record.projectName !== sanitizeProjectName(filters.projectName)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function listUploadedPlanRecords(filters?: UploadListFilters): Promise<UploadedPlanRecord[]> {
   assertBlobConfiguredInProduction();
 
   if (usesBlobStorage()) {
@@ -193,21 +235,27 @@ export async function listUploadedPlans(): Promise<UploadedPlan[]> {
       (blob) => blob.pathname.startsWith(`${BLOB_UPLOAD_PREFIX}/`) && blob.pathname.endsWith(".pdf")
     );
 
-    const plans = await Promise.all(
+    const records = await Promise.all(
       pdfBlobs.map(async (blob) => {
         const fileName = path.basename(blob.pathname);
         const meta = await readBlobMetadata(fileName);
-        return {
+
+        const record: UploadedPlanRecord = {
           name: fileName,
           uploadedAt: meta?.uploadedAt ?? blob.uploadedAt.toISOString(),
           projectName: meta?.projectName ?? "Untitled Project",
           url: meta?.url ?? blob.url,
+          userEmail: sanitizeUserEmail(meta?.userEmail ?? ""),
+          extractedText: meta?.extractedText ?? "",
         };
+
+        return record;
       })
     );
 
-    plans.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-    return plans;
+    return records
+      .filter((record) => matchesFilters(record, filters))
+      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
   }
 
   const uploadsDir = await ensureUploadsDir();
@@ -215,22 +263,47 @@ export async function listUploadedPlans(): Promise<UploadedPlan[]> {
   const entries = await readdir(uploadsDir, { withFileTypes: true });
   const pdfEntries = entries.filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".pdf"));
 
-  const plans = await Promise.all(
+  const records = await Promise.all(
     pdfEntries.map(async (entry) => {
       const filePath = path.join(uploadsDir, entry.name);
       const fileStat = await stat(filePath);
       const meta = metadata[entry.name];
+
       return {
         name: entry.name,
         uploadedAt: meta?.uploadedAt ?? fileStat.mtime.toISOString(),
         projectName: meta?.projectName ?? "Untitled Project",
         url: meta?.url ?? `/api/uploads/${encodeURIComponent(entry.name)}`,
-      };
+        userEmail: sanitizeUserEmail(meta?.userEmail ?? ""),
+        extractedText: meta?.extractedText ?? "",
+      } as UploadedPlanRecord;
     })
   );
 
-  plans.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
-  return plans;
+  return records
+    .filter((record) => matchesFilters(record, filters))
+    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+}
+
+export async function listUploadedPlans(filters?: UploadListFilters): Promise<UploadedPlan[]> {
+  const records = await listUploadedPlanRecords(filters);
+  return records.map(({ name, uploadedAt, projectName, url }) => ({
+    name,
+    uploadedAt,
+    projectName,
+    url,
+  }));
+}
+
+export async function getLatestUploadedPlanForUser(
+  userEmail: string,
+  projectName?: string
+): Promise<UploadedPlanRecord | null> {
+  const normalizedEmail = sanitizeUserEmail(userEmail);
+  if (!normalizedEmail) return null;
+
+  const records = await listUploadedPlanRecords({ userEmail: normalizedEmail, projectName });
+  return records[0] ?? null;
 }
 
 export async function savePdfUploadRequest(req: IncomingMessage): Promise<UploadedPlan[]> {
@@ -257,6 +330,10 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
   }
 
   const projectName = sanitizeProjectName(parsed.fields.projectName ?? "");
+  const userEmail = sanitizeUserEmail(parsed.fields.userEmail ?? "");
+  if (!userEmail) {
+    throw new Error("User email is required for uploads");
+  }
 
   if (usesBlobStorage()) {
     const saved = await Promise.all(
@@ -265,6 +342,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
         const finalName = safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
         const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${finalName}`;
         const uploadedAt = new Date().toISOString();
+        const extractedText = await extractPdfText(file.data);
 
         const uploaded = await put(getBlobPdfPath(uniqueName), file.data, {
           access: "public",
@@ -281,6 +359,8 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
               projectName,
               uploadedAt,
               url,
+              userEmail,
+              extractedText,
             } satisfies UploadMetadataEntry
           ),
           {
@@ -312,6 +392,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
       const finalName = safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
       const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${finalName}`;
       const outputPath = path.join(uploadsDir, uniqueName);
+      const extractedText = await extractPdfText(file.data);
 
       await writeFile(outputPath, file.data);
       const fileStat = await stat(outputPath);
@@ -322,6 +403,8 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
         projectName,
         uploadedAt,
         url: `/api/uploads/${encodeURIComponent(uniqueName)}`,
+        userEmail,
+        extractedText,
       };
 
       return {

@@ -11,6 +11,13 @@ type ChatApiResponse = {
   error?: string;
 };
 
+type UploadedPlan = {
+  name: string;
+  uploadedAt: string;
+  projectName: string;
+  url: string;
+};
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant";
@@ -42,7 +49,7 @@ function renderWithBold(text: string): ReactNode {
   );
 }
 
-async function requestChat(payload: { question: string }): Promise<ChatApiResponse> {
+async function requestChat(payload: { question: string; userEmail: string }): Promise<ChatApiResponse> {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: {
@@ -80,6 +87,7 @@ export default function ChatPage() {
   const [isAsking, setIsAsking] = useState(false);
   const [tick, setTick] = useState(0);
   const [history, setHistory] = useState<ChatMessage[]>([]);
+  const [selectedFileName, setSelectedFileName] = useState("No PDF selected");
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -89,6 +97,30 @@ export default function ChatPage() {
     }
     setEmail(signedInEmail);
   }, [router]);
+
+  useEffect(() => {
+    if (!email) return;
+
+    const loadLatestUpload = async () => {
+      try {
+        const response = await fetch(`/api/uploads?userEmail=${encodeURIComponent(email)}`);
+        const raw = await response.text();
+        const parsed = raw ? (JSON.parse(raw) as { files?: UploadedPlan[]; error?: string }) : null;
+
+        if (!response.ok) {
+          throw new Error(parsed?.error || "Could not load uploaded PDFs.");
+        }
+
+        const first = parsed?.files?.[0];
+        setSelectedFileName(first?.name ?? "No PDF selected");
+      } catch (error) {
+        console.error("Failed to load latest uploaded PDF:", error);
+        setSelectedFileName("No PDF selected");
+      }
+    };
+
+    void loadLatestUpload();
+  }, [email]);
 
   useEffect(() => {
     if (!isAsking) return;
@@ -117,7 +149,7 @@ export default function ChatPage() {
     setTick(0);
 
     try {
-      const payload = await requestChat({ question: trimmed });
+      const payload = await requestChat({ question: trimmed, userEmail: email });
       const assistantContent = payload?.answer ?? payload?.error ?? "No answer returned.";
 
       setHistory((prev) => [
@@ -154,6 +186,9 @@ export default function ChatPage() {
                 </h1>
                 <p className="muted" style={{ margin: 0 }}>
                   Signed in as {email || "..."}.
+                </p>
+                <p className="muted" style={{ margin: "6px 0 0" }}>
+                  Selected PDF: {selectedFileName}
                 </p>
               </div>
               <div style={{ display: "flex", gap: 8 }}>

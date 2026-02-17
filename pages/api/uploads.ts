@@ -16,7 +16,9 @@ export default async function handler(
       return;
     }
 
-    const files = await listUploadedPlans();
+    const userEmail = typeof req.query.userEmail === "string" ? req.query.userEmail : undefined;
+    const projectName = typeof req.query.projectName === "string" ? req.query.projectName : undefined;
+    const files = await listUploadedPlans({ userEmail, projectName });
     res.status(200).json({ files });
   } catch (error) {
     console.error("Uploads list API error:", error);
