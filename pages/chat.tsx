@@ -8,6 +8,7 @@ import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 type ChatApiResponse = {
   ok?: boolean;
   answer?: string;
+  reply?: string;
   error?: string;
 };
 
@@ -140,8 +141,8 @@ export default function ChatPage() {
 
   async function onAsk(): Promise<void> {
     if (isAsking) return;
-    const trimmed = message.trim();
-    if (!trimmed) {
+    const input = message.trim();
+    if (!input) {
       setStatus("Please enter a message.");
       return;
     }
@@ -151,53 +152,36 @@ export default function ChatPage() {
     setTick(0);
 
     try {
-      const pdfUrl = selectedPdfUrl.trim();
-      if (!pdfUrl) {
-        throw new Error("No plan selected. Go to Uploads and choose a PDF.");
-      }
-
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: trimmed,
-          pdfUrl,
+          message: input,
         }),
       });
 
-      const raw = await res.text();
-      let data: ChatApiResponse | null = null;
-      if (raw && looksLikeJson(res)) {
-        try {
-          data = JSON.parse(raw) as ChatApiResponse;
-        } catch {
-          data = null;
-        }
-      }
-
+      const data = (await res.json()) as ChatApiResponse;
       if (!res.ok) {
-        throw new Error(data?.error || raw || `HTTP ${res.status}`);
+        throw new Error(data?.error || `HTTP ${res.status}`);
       }
 
-      if (!data) throw new Error("Empty response from server");
-
-      const payload = data;
-      const assistantContent = payload?.answer ?? payload?.error ?? "No answer returned.";
+      const reply = data?.reply;
+      if (!reply) throw new Error("Empty response from server");
 
       setHistory((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "user",
-          content: trimmed,
+          content: input,
           createdAt: Date.now(),
         },
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: assistantContent,
+          content: reply,
           createdAt: Date.now(),
         },
       ]);
@@ -253,7 +237,7 @@ export default function ChatPage() {
           throw new Error(payload?.error ?? raw ?? `HTTP ${res.status}`);
         }
 
-        const assistantContent = payload?.answer ?? payload?.error ?? "No answer returned.";
+        const assistantContent = payload?.reply ?? payload?.answer ?? payload?.error ?? "Request failed";
         setHistory((prev) => [
           ...prev,
           {
