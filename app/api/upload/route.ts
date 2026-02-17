@@ -1,6 +1,7 @@
 import { put } from "@vercel/blob";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type UploadedFile = {
   name: string;
@@ -12,6 +13,7 @@ type UploadedFile = {
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
+    const userEmail = String(formData.get("userEmail") || "").trim();
     const entries = formData.getAll("files");
 
     if (!entries.length) {
@@ -25,7 +27,9 @@ export async function POST(req: Request) {
         return Response.json({ success: false, error: "Invalid file payload" }, { status: 400 });
       }
 
-      const blob = await put(entry.name, entry, { access: "public" });
+      const safeEmail = userEmail || "anonymous";
+      const pathname = `uploads/${safeEmail}/${Date.now()}-${entry.name}`;
+      const blob = await put(pathname, entry, { access: "public" });
 
       uploadedFiles.push({
         name: entry.name,
