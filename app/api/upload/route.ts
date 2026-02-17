@@ -1,5 +1,7 @@
 import { put } from "@vercel/blob";
 import { PDFParse } from "pdf-parse";
+import fs from "fs";
+import path from "path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,6 +12,10 @@ type UploadedFile = {
   size: number;
   pathname: string;
 };
+
+function safePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._@-]/g, "_");
+}
 
 export async function POST(req: Request) {
   try {
@@ -28,8 +34,9 @@ export async function POST(req: Request) {
         return Response.json({ success: false, error: "Invalid file payload" }, { status: 400 });
       }
 
-      const safeEmail = userEmail || "anonymous";
-      const pathname = `uploads/${safeEmail}/${Date.now()}-${entry.name}`;
+      const safeEmail = safePathSegment(userEmail || "anonymous");
+      const safeFileName = safePathSegment(entry.name);
+      const pathname = `uploads/${safeEmail}/${safeFileName}`;
       const fileBuffer = Buffer.from(await entry.arrayBuffer());
       const parser = new PDFParse({ data: fileBuffer });
       let pdfText = "";
@@ -46,9 +53,12 @@ export async function POST(req: Request) {
 
       const blob = await put(pathname, entry, { access: "public" });
       await put(`${pathname}.txt`, pdfText, { access: "public" });
+      const localDir = path.join(process.cwd(), "uploads", safeEmail);
+      fs.mkdirSync(localDir, { recursive: true });
+      fs.writeFileSync(path.join(localDir, `${safeFileName}.txt`), pdfText, "utf8");
 
       uploadedFiles.push({
-        name: entry.name,
+        name: safeFileName,
         url: blob.url,
         size: entry.size,
         pathname: blob.pathname,
