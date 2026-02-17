@@ -1,7 +1,5 @@
 import { put } from "@vercel/blob";
-import { PDFParse } from "pdf-parse";
-import fs from "fs";
-import path from "path";
+import pdfParse from "pdf-parse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +10,16 @@ type UploadedFile = {
   size: number;
   pathname: string;
 };
+
+type PlanTextStore = Record<string, Record<string, string>>;
+type PlanSelectionStore = Record<string, string>;
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __PLAN_TEXT_STORE__: PlanTextStore | undefined;
+  // eslint-disable-next-line no-var
+  var __PLAN_SELECTION_STORE__: PlanSelectionStore | undefined;
+}
 
 function safePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._@-]/g, "_");
@@ -38,24 +46,17 @@ export async function POST(req: Request) {
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${safeFileName}`;
       const fileBuffer = Buffer.from(await entry.arrayBuffer());
-      const parser = new PDFParse({ data: fileBuffer });
-      let pdfText = "";
-      try {
-        const parsed = await parser.getText();
-        pdfText = (parsed.text ?? "").trim();
-      } finally {
-        await parser.destroy();
-      }
-
-      if (!pdfText) {
-        return Response.json({ success: false, error: "Could not extract text from PDF" }, { status: 400 });
-      }
+      const parsed = await pdfParse(fileBuffer);
+      const pdfText = (parsed.text || "").trim();
 
       const blob = await put(pathname, entry, { access: "public" });
-      await put(`${pathname}.txt`, pdfText, { access: "public" });
-      const localDir = path.join(process.cwd(), "uploads", safeEmail);
-      fs.mkdirSync(localDir, { recursive: true });
-      fs.writeFileSync(path.join(localDir, `${safeFileName}.txt`), pdfText, "utf8");
+      await put(`${pathname}.txt`, new Blob([pdfText], { type: "text/plain" }), { access: "public" });
+
+      globalThis.__PLAN_TEXT_STORE__ = globalThis.__PLAN_TEXT_STORE__ || {};
+      globalThis.__PLAN_TEXT_STORE__[safeEmail] = globalThis.__PLAN_TEXT_STORE__[safeEmail] || {};
+      globalThis.__PLAN_TEXT_STORE__[safeEmail][safeFileName] = pdfText;
+      globalThis.__PLAN_SELECTION_STORE__ = globalThis.__PLAN_SELECTION_STORE__ || {};
+      globalThis.__PLAN_SELECTION_STORE__[safeEmail] = safeFileName;
 
       uploadedFiles.push({
         name: safeFileName,

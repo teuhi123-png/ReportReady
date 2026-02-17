@@ -7,6 +7,7 @@ import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type UploadedPlan = {
   name: string;
+  pdfFileName?: string;
   pdfKey?: string;
   pathname?: string;
   uploadedAt?: string;
@@ -277,7 +278,7 @@ export default function UploadPage() {
                         variant="secondary"
                         onClick={() =>
                           void router.push(
-                            `/chat?pdfKey=${encodeURIComponent(file.pdfKey ?? file.pathname ?? "")}&name=${encodeURIComponent(file.name)}`
+                            `/chat?pdfFileName=${encodeURIComponent(file.pdfFileName ?? file.name)}&name=${encodeURIComponent(file.name)}`
                           )
                         }
                       >
