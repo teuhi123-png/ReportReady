@@ -1,72 +1,92 @@
-import { NextResponse } from "next/server";
-import { put } from "@vercel/blob";
-import { listUploadedPlans } from "../../../lib/uploadPlans";
+import { NextRequest } from "next/server";
+import { put, list } from "@vercel/blob";
 
-export const runtime = "nodejs";
+export const runtime = "nodejs"; // important for blob + formData
+export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const userEmail = searchParams.get("userEmail") ?? undefined;
-    const projectName = searchParams.get("projectName") ?? undefined;
-
-    const files = await listUploadedPlans({ userEmail, projectName });
-
-    return NextResponse.json({
-      success: true,
-      files,
-    });
-  } catch (error) {
-    console.error("UPLOADS ERROR:", error);
-    const message = error instanceof Error ? error.message : "Failed to fetch uploads";
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
-  }
+function safeName(name: string) {
+  // basic cleanup to avoid weird paths
+  return name.replace(/[^\w.\-() ]+/g, "_");
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return NextResponse.json(
-        { success: false, error: "BLOB_READ_WRITE_TOKEN is required." },
-        { status: 500 }
-      );
-    }
-
     const formData = await req.formData();
-    const files = formData.getAll("files");
 
-    if (files.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "No files provided." },
-        { status: 400 }
-      );
+    const userEmail = String(formData.get("userEmail") || "");
+    const projectName = String(formData.get("projectName") || "");
+
+    const files = formData.getAll("files") as File[];
+
+    if (!files || files.length === 0) {
+      return Response.json({ success: false, error: "No files provided" }, { status: 400 });
     }
 
+    // Upload all PDFs
     const uploaded = await Promise.all(
-      files.map(async (entry) => {
-        if (!(entry instanceof File)) {
-          throw new Error("Invalid file payload.");
+      files.map(async (file) => {
+        if (!(file instanceof File)) {
+          throw new Error("Invalid file in FormData");
         }
 
-        const bytes = await entry.arrayBuffer();
-        const blob = new Blob([bytes], { type: entry.type || "application/octet-stream" });
-        const result = await put(entry.name, blob, { access: "public" });
+        if (file.type !== "application/pdf") {
+          throw new Error(`Only PDFs allowed. Got: ${file.type || "unknown"}`);
+        }
+
+        // optional: force reading to ensure it's real
+        await file.arrayBuffer();
+
+        const filename = safeName(file.name);
+        const keyParts = [
+          "uploads",
+          userEmail || "anonymous",
+          projectName ? safeName(projectName) : "no-project",
+          `${Date.now()}-${filename}`,
+        ];
+        const pathname = keyParts.join("/");
+
+        const blob = await put(pathname, file, { access: "public" });
 
         return {
-          pathname: result.pathname,
-          url: result.url,
-          size: entry.size,
+          url: blob.url,
+          pathname: blob.pathname,
+          size: file.size,
+          name: file.name,
+          type: file.type,
         };
       })
     );
 
-    return NextResponse.json({ success: true, files: uploaded });
-  } catch (error) {
-    console.error("UPLOADS POST ERROR:", error);
-    const message = error instanceof Error ? error.message : "Failed to upload files";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return Response.json({ success: true, uploaded });
+  } catch (err: any) {
+    console.error("UPLOAD ERROR:", err);
+    return Response.json({ success: false, error: err?.message || "Upload failed" }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const userEmail = searchParams.get("userEmail") || "anonymous";
+
+    // list only this user's folder
+    const prefix = `uploads/${userEmail}/`;
+
+    const results = await list({ prefix, limit: 100 });
+
+    // return newest first
+    const items = (results.blobs || [])
+      .map((b) => ({
+        url: b.url,
+        pathname: b.pathname,
+        size: b.size,
+        uploadedAt: b.uploadedAt,
+      }))
+      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+
+    return Response.json({ success: true, items });
+  } catch (err: any) {
+    console.error("LIST ERROR:", err);
+    return Response.json({ success: false, error: err?.message || "List failed" }, { status: 500 });
   }
 }
