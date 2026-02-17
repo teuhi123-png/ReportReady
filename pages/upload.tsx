@@ -30,6 +30,12 @@ function isJsonResponse(response: Response): boolean {
   return contentType.toLowerCase().includes("application/json");
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -49,9 +55,8 @@ export default function UploadPage() {
     setEmail(signedInEmail);
   }, [router]);
 
-  const selectedSizeMb = useMemo(() => {
-    const bytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
-    return bytes / (1024 * 1024);
+  const selectedSizeBytes = useMemo(() => {
+    return selectedFiles.reduce((sum, file) => sum + file.size, 0);
   }, [selectedFiles]);
 
   async function loadUploads(currentEmail: string): Promise<void> {
@@ -207,17 +212,17 @@ export default function UploadPage() {
                   <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
                     {selectedFiles.map((file, index) => (
                       <li key={`${file.name}-${file.size}-${index}`} style={{ wordBreak: "break-word" }}>
-                        {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                        {file.name} ({formatFileSize(file.size)})
                       </li>
                     ))}
                   </ul>
-                  <div className="muted">Total size: {selectedSizeMb.toFixed(2)} MB</div>
+                  <div className="muted">Total size: {formatFileSize(selectedSizeBytes)}</div>
                 </div>
               </div>
             )}
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button onClick={onUpload} loading={isUploading} disabled={selectedFiles.length === 0}>
+              <Button type="button" onClick={onUpload} loading={isUploading} disabled={selectedFiles.length === 0}>
                 Upload Plans
               </Button>
               <Link href="/chat">
