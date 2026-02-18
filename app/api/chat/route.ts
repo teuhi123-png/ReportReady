@@ -8,24 +8,10 @@ import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
-async function extractTextFromPdf(buffer: Uint8Array): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.js");
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-  const loadingTask = pdfjsLib.getDocument({
-    data: buffer,
-    useWorkerFetch: false,
-    isEvalSupported: false,
-    useSystemFonts: true,
-  });
-  const pdf = await loadingTask.promise;
-  const pages = await Promise.all(
-    Array.from({ length: pdf.numPages }, async (_, i) => {
-      const page = await pdf.getPage(i + 1);
-      const content = await page.getTextContent();
-      return content.items.map((item: any) => ("str" in item ? item.str : "")).join(" ");
-    })
-  );
-  return pages.join("\n");
+async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  const pdfParse = (await import("pdf-parse")).default;
+  const result = await pdfParse(buffer);
+  return result.text ?? "";
 }
 
 
@@ -48,30 +34,25 @@ export async function POST(req: NextRequest) {
     }
 
 
-    // Fetch PDF from Vercel Blob
     const pdfResponse = await fetch(pdfUrl, { cache: "no-store" });
     if (!pdfResponse.ok) {
       return Response.json(
-        {
-          error: `Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`,
-        },
+        { error: `Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}` },
         { status: 502 }
       );
     }
 
 
-    const pdfArrayBuffer = await pdfResponse.arrayBuffer();
-    const pdfBuffer = new Uint8Array(pdfArrayBuffer);
+    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
 
-    // Extract text
     let extractedText: string;
     try {
       extractedText = (await extractTextFromPdf(pdfBuffer)).trim();
     } catch (parseError) {
       console.error("[/api/chat] PDF parse error:", parseError);
       return Response.json(
-        { error: "Failed to parse PDF. The file may be corrupted or password-protected." },
+        { error: "Failed to parse PDF." },
         { status: 422 }
       );
     }
@@ -79,24 +60,19 @@ export async function POST(req: NextRequest) {
 
     if (!extractedText) {
       return Response.json(
-        {
-          error:
-            "No text could be extracted. The PDF may be scanned/image-based and requires OCR.",
-        },
+        { error: "No text could be extracted. The PDF may be image-based." },
         { status: 422 }
       );
     }
 
 
-    // Truncate to stay within token limits (~48k chars ≈ ~12k tokens)
-    const MAX_CHARS = 48_000;
+    const MAX_CHARS = 48000;
     const documentText =
       extractedText.length > MAX_CHARS
-        ? extractedText.slice(0, MAX_CHARS) + "\n\n[Document truncated due to length]"
+        ? extractedText.slice(0, MAX_CHARS) + "\n\n[Document truncated]"
         : extractedText;
 
 
-    // Send to OpenAI
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
@@ -105,7 +81,7 @@ export async function POST(req: NextRequest) {
         {
           role: "system",
           content:
-            "You are an expert building plan analyst. Answer questions using ONLY the document text provided. If the answer is not in the document, respond with: 'Not stated in the plan.'",
+            "You are an expert building plan analyst. Answer using ONLY the document text. If not stated, say: Not stated in the plan.",
         },
         {
           role: "user",
