@@ -11,7 +11,8 @@ type Body = {
   pdfUrl?: string; // must be a direct, publicly fetchable URL (e.g., Vercel Blob public url)
 };
 
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+ async function extractTextFromPdf(buffer: Uint8Array): Promise<string>
+{
   // Server-safe PDF parser for Vercel
   const { extractText } = await import("unpdf");
   const { text } = await extractText(buffer, { mergePages: true });
@@ -74,10 +75,11 @@ export async function POST(req: NextRequest) {
     }
 
     const arrayBuffer = await pdfResponse.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const uint8 = new Uint8Array(arrayBuffer);
 
     // Extract text
-    const pdfText = await extractTextFromPdf(buffer);
+    const pdfText = await extractTextFromPdf(uint8);
+
 
     if (!pdfText) {
       return Response.json(
