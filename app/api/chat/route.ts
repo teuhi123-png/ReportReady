@@ -8,7 +8,7 @@ import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
-async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+async function extractTextFromPdf(buffer: Uint8Array): Promise<string> {
   // unpdf is a server-safe PDF parser with no browser-global dependencies
   const { extractText } = await import("unpdf");
   const { text } = await extractText(buffer, { mergePages: true });
@@ -47,7 +47,8 @@ export async function POST(req: NextRequest) {
     }
 
 
-    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+    const pdfArrayBuffer = await pdfResponse.arrayBuffer();
+    const pdfBuffer = new Uint8Array(pdfArrayBuffer);
 
 
     // Extract text
