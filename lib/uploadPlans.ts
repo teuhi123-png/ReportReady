@@ -101,12 +101,6 @@ function isPdfFile(contentType: string, filename: string): boolean {
   return normalizedType === "application/pdf" || normalizedName.endsWith(".pdf");
 }
 
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  const pdfParse = require("pdf-parse");
-  const parsed = await pdfParse(buffer);
-  return String(parsed?.text || "").replace(/\s+/g, " ").trim();
-}
-
 async function readRequestBody(req: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
