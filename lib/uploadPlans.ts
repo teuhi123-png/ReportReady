@@ -2,7 +2,10 @@ import type { IncomingMessage } from "http";
 import { createReadStream } from "fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
+import { createRequire } from "module";
 import { head, list, put } from "@vercel/blob";
+
+const require = createRequire(import.meta.url);
 
 export type UploadedPlan = {
   name: string;
@@ -99,16 +102,9 @@ function isPdfFile(contentType: string, filename: string): boolean {
 }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const loadingTask = pdfjsLib.getDocument({ data: buffer });
-  const pdf = await loadingTask.promise;
-  let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    text += content.items.map((item: any) => item.str).join(" ") + "\n";
-  }
-  return text.replace(/\s+/g, " ").trim();
+  const pdfParse = require("pdf-parse");
+  const parsed = await pdfParse(buffer);
+  return String(parsed?.text || "").replace(/\s+/g, " ").trim();
 }
 
 async function readRequestBody(req: IncomingMessage): Promise<Buffer> {

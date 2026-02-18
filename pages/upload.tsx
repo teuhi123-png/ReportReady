@@ -46,21 +46,6 @@ function formatUploadedAt(uploadedAt?: string): string {
   return date.toLocaleString();
 }
 
-async function extractPdfTextInBrowser(file: File): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist");
-  (pdfjsLib as any).GlobalWorkerOptions.workerSrc =
-    `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${(pdfjsLib as any).version}/pdf.worker.min.js`;
-  const arrayBuffer = await file.arrayBuffer();
-  const pdf = await (pdfjsLib as any).getDocument({ data: arrayBuffer }).promise;
-  let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    text += content.items.map((item: any) => item.str).join(" ") + "\n";
-  }
-  return text.trim();
-}
-
 export default function UploadPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -136,8 +121,6 @@ export default function UploadPage() {
       formData.append("projectName", projectName.trim());
       formData.append("userEmail", email);
       for (const file of selectedFiles) {
-        const extractedText = await extractPdfTextInBrowser(file);
-        formData.append(`text:${file.name}`, extractedText);
         formData.append("files", file);
       }
 

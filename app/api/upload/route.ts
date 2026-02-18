@@ -1,4 +1,7 @@
 import { put } from "@vercel/blob";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,11 +46,14 @@ export async function POST(req: Request) {
 
       const safeEmail = safePathSegment(userEmail || "anonymous");
       const safeFileName = safePathSegment(entry.name);
-      const pathname = `uploads/${safeEmail}/${safeFileName}`;
-      const pdfText = String(formData.get(`text:${entry.name}`) || "").trim();
+      const pathname = `uploads/${safeEmail}/${Date.now()}-${safeFileName}`;
+      const fileBuffer = Buffer.from(await entry.arrayBuffer());
+      const pdfParse = require("pdf-parse");
+      const parsed = await pdfParse(fileBuffer);
+      const pdfText = String(parsed?.text || "").trim();
 
       if (!pdfText) {
-        return Response.json({ success: false, error: "No extracted text received" }, { status: 400 });
+        return Response.json({ success: false, error: "Could not extract text from PDF" }, { status: 400 });
       }
 
       const blob = await put(pathname, entry, { access: "public" });
