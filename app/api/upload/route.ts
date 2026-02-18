@@ -1,7 +1,4 @@
 import { put } from "@vercel/blob";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,17 +8,9 @@ type UploadedFile = {
   url: string;
   size: number;
   pathname: string;
+  txtPathname: string;
+  txtUrl: string;
 };
-
-type PlanTextStore = Record<string, Record<string, string>>;
-type PlanSelectionStore = Record<string, string>;
-
-declare global {
-  // eslint-disable-next-line no-var
-  var __PLAN_TEXT_STORE__: PlanTextStore | undefined;
-  // eslint-disable-next-line no-var
-  var __PLAN_SELECTION_STORE__: PlanSelectionStore | undefined;
-}
 
 function safePathSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._@-]/g, "_");
@@ -47,29 +36,34 @@ export async function POST(req: Request) {
       const safeEmail = safePathSegment(userEmail || "anonymous");
       const safeFileName = safePathSegment(entry.name);
       const pathname = `uploads/${safeEmail}/${Date.now()}-${safeFileName}`;
-      const fileBuffer = Buffer.from(await entry.arrayBuffer());
-      const pdfParse = require("pdf-parse");
-      const parsed = await pdfParse(fileBuffer);
-      const pdfText = String(parsed?.text || "").trim();
+      const textKey = `text:${entry.name}`;
+      const directText = formData.get(textKey);
+      const textsPayloadRaw = String(formData.get("texts") || "").trim();
+      let mapText = "";
+      if (textsPayloadRaw) {
+        try {
+          const parsedMap = JSON.parse(textsPayloadRaw) as Record<string, string>;
+          mapText = String(parsedMap?.[entry.name] || "");
+        } catch {
+          mapText = "";
+        }
+      }
+      const pdfText = String(directText || mapText || "").trim();
 
       if (!pdfText) {
-        return Response.json({ success: false, error: "Could not extract text from PDF" }, { status: 400 });
+        return Response.json({ success: false, error: "No extracted text received" }, { status: 400 });
       }
 
       const blob = await put(pathname, entry, { access: "public" });
-      await put(`${pathname}.txt`, pdfText, { access: "public" });
-
-      globalThis.__PLAN_TEXT_STORE__ = globalThis.__PLAN_TEXT_STORE__ || {};
-      globalThis.__PLAN_TEXT_STORE__[safeEmail] = globalThis.__PLAN_TEXT_STORE__[safeEmail] || {};
-      globalThis.__PLAN_TEXT_STORE__[safeEmail][safeFileName] = pdfText;
-      globalThis.__PLAN_SELECTION_STORE__ = globalThis.__PLAN_SELECTION_STORE__ || {};
-      globalThis.__PLAN_SELECTION_STORE__[safeEmail] = safeFileName;
+      const textBlob = await put(`${pathname}.txt`, pdfText, { access: "public" });
 
       uploadedFiles.push({
         name: safeFileName,
         url: blob.url,
         size: entry.size,
         pathname: blob.pathname,
+        txtPathname: textBlob.pathname,
+        txtUrl: textBlob.url,
       });
     }
 

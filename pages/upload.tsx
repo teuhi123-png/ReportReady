@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import type { ChangeEvent } from "react";
@@ -10,6 +10,8 @@ type UploadedPlan = {
   pdfFileName?: string;
   pdfKey?: string;
   pathname?: string;
+  txtPathname?: string;
+  txtUrl?: string;
   uploadedAt?: string;
   projectName?: string;
   url: string;
@@ -46,8 +48,33 @@ function formatUploadedAt(uploadedAt?: string): string {
   return date.toLocaleString();
 }
 
+async function extractPdfTextInBrowser(file: File): Promise<string> {
+  const pdfjsLib = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as {
+    version: string;
+    GlobalWorkerOptions: { workerSrc: string };
+    getDocument: (source: { data: Uint8Array }) => { promise: Promise<any> };
+  };
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
+  const fileBuffer = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(fileBuffer) });
+  const pdf = await loadingTask.promise;
+
+  let fullText = "";
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+    const strings = (textContent.items as Array<{ str?: string }>).map((item) => String(item.str ?? ""));
+    fullText += `${strings.join(" ")}\n`;
+  }
+
+  return fullText.trim();
+}
+
 export default function UploadPage() {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [email, setEmail] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [projectName, setProjectName] = useState("");
@@ -114,15 +141,26 @@ export default function UploadPage() {
     if (selectedFiles.length === 0 || isUploading) return;
 
     setIsUploading(true);
-    setStatusMessage("Uploading plans...");
+    setStatusMessage("Extracting text from PDFs...");
 
     try {
       const formData = new FormData();
       formData.append("projectName", projectName.trim());
       formData.append("userEmail", email);
+      const texts: Record<string, string> = {};
+
       for (const file of selectedFiles) {
+        const extractedText = await extractPdfTextInBrowser(file);
+        if (!extractedText) {
+          throw new Error(`Could not extract text from ${file.name}`);
+        }
         formData.append("files", file);
+        formData.append(`text:${file.name}`, extractedText);
+        texts[file.name] = extractedText;
       }
+      formData.append("texts", JSON.stringify(texts));
+
+      setStatusMessage("Uploading PDFs and extracted text...");
 
       const response = await fetch("/api/upload", {
         method: "POST",
@@ -141,13 +179,19 @@ export default function UploadPage() {
 
       const uploaded = payload.files ?? [];
       const savedProjectName = uploaded[0]?.projectName ?? "Untitled Project";
+      const txtUploads = uploaded
+        .map((file) => file.txtPathname)
+        .filter((value): value is string => Boolean(value));
       setStatusMessage(
         `Successfully uploaded ${uploaded.length} PDF plan${
           uploaded.length === 1 ? "" : "s"
-        } to ${savedProjectName}.`
+        } to ${savedProjectName}.${txtUploads.length > 0 ? ` Text blob: ${txtUploads[0]}` : ""}`
       );
       setSelectedFiles([]);
       setProjectName("");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       await fetchUploadedPDFs(email);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Upload failed";
@@ -202,6 +246,7 @@ export default function UploadPage() {
               <div className="label">PDF files</div>
               <input
                 id="site-plan-upload"
+                ref={fileInputRef}
                 type="file"
                 className="input"
                 accept="application/pdf,.pdf"
