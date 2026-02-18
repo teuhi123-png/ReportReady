@@ -8,21 +8,23 @@ import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
-async function getPdfParse() {
-  // Handles CommonJS/ESM interop variations
-  const mod: any = await import("pdf-parse");
-  return mod?.default ?? mod;
+async function extractTextFromPdf(buffer: Buffer): Promise<string> {
+  // unpdf is a server-safe PDF parser with no browser-global dependencies
+  const { extractText } = await import("unpdf");
+  const { text } = await extractText(buffer, { mergePages: true });
+  return text ?? "";
 }
 
 
 export async function GET() {
-  return Response.json({ error: "Use POST" }, { status: 405 });
+  return Response.json({ error: "Method not allowed. Use POST." }, { status: 405 });
 }
 
 
 export async function POST(req: NextRequest) {
   try {
-    const { question, pdfUrl } = await req.json();
+    const body = await req.json();
+    const { question, pdfUrl } = body ?? {};
 
 
     if (!question || !pdfUrl) {
@@ -33,60 +35,69 @@ export async function POST(req: NextRequest) {
     }
 
 
-    // Fetch PDF bytes
+    // Fetch PDF from Vercel Blob
     const pdfResponse = await fetch(pdfUrl, { cache: "no-store" });
     if (!pdfResponse.ok) {
       return Response.json(
-        { error: `Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}` },
-        { status: 500 }
+        {
+          error: `Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}`,
+        },
+        { status: 502 }
       );
     }
 
 
-    const pdfArrayBuffer = await pdfResponse.arrayBuffer();
-    const pdfBuffer = Buffer.from(pdfArrayBuffer);
+    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
 
 
-    // Parse PDF -> text
-    const pdfParse = await getPdfParse();
-    const pdfData = await pdfParse(pdfBuffer);
-    const extractedText = String(pdfData?.text ?? "").trim();
+    // Extract text
+    let extractedText: string;
+    try {
+      extractedText = (await extractTextFromPdf(pdfBuffer)).trim();
+    } catch (parseError) {
+      console.error("[/api/chat] PDF parse error:", parseError);
+      return Response.json(
+        { error: "Failed to parse PDF. The file may be corrupted or password-protected." },
+        { status: 422 }
+      );
+    }
 
 
     if (!extractedText) {
       return Response.json(
         {
           error:
-            "Could not extract text from the PDF. It may be scanned/image-based (needs OCR).",
+            "No text could be extracted. The PDF may be scanned/image-based and requires OCR.",
         },
         { status: 422 }
       );
     }
 
 
-    // Token safety
-    const maxChars = 48000;
-    const truncatedText =
-      extractedText.length > maxChars
-        ? extractedText.slice(0, maxChars) + "\n\n[Document truncated]"
+    // Truncate to stay within token limits (~48k chars ≈ ~12k tokens)
+    const MAX_CHARS = 48_000;
+    const documentText =
+      extractedText.length > MAX_CHARS
+        ? extractedText.slice(0, MAX_CHARS) + "\n\n[Document truncated due to length]"
         : extractedText;
 
 
+    // Send to OpenAI
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
+      temperature: 0.2,
+      max_tokens: 700,
       messages: [
         {
           role: "system",
           content:
-            "You are an expert building plan analyst. Answer ONLY using the document text. If not stated, say 'Not stated in the plan.'",
+            "You are an expert building plan analyst. Answer questions using ONLY the document text provided. If the answer is not in the document, respond with: 'Not stated in the plan.'",
         },
         {
           role: "user",
-          content: `DOCUMENT TEXT:\n\n${truncatedText}\n\n---\n\nQUESTION: ${question}`,
+          content: `DOCUMENT TEXT:\n\n${documentText}\n\n---\n\nQUESTION: ${question}`,
         },
       ],
-      temperature: 0.2,
-      max_tokens: 700,
     });
 
 
@@ -96,8 +107,8 @@ export async function POST(req: NextRequest) {
 
     return Response.json({ answer });
   } catch (error: unknown) {
-    console.error("[/api/chat] Error:", error);
-    const message = error instanceof Error ? error.message : "Server error";
+    console.error("[/api/chat] Unhandled error:", error);
+    const message = error instanceof Error ? error.message : "Internal server error";
     return Response.json({ error: message }, { status: 500 });
   }
 }
