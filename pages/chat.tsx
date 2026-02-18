@@ -68,6 +68,7 @@ export default function ChatPage() {
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [selectedFileName, setSelectedFileName] = useState("No PDF selected");
   const [selectedPdf, setSelectedPdf] = useState("");
+  const [selectedPdfUrl, setSelectedPdfUrl] = useState("");
   const [activePlanName, setActivePlanName] = useState("");
   const [pdfFromQuery, setPdfFromQuery] = useState("");
 
@@ -105,10 +106,12 @@ export default function ChatPage() {
         const first = parsed?.files?.[0];
         setSelectedFileName(first?.name ?? "No PDF selected");
         setSelectedPdf(first?.pdfFileName ?? first?.name ?? "");
+        setSelectedPdfUrl(first?.url ?? "");
       } catch (error) {
         console.error("Failed to load latest uploaded PDF:", error);
         setSelectedFileName("No PDF selected");
         setSelectedPdf("");
+        setSelectedPdfUrl("");
       }
     };
 
@@ -120,6 +123,7 @@ export default function ChatPage() {
     const params = new URLSearchParams(window.location.search);
     const pdfFileName = params.get("pdfFileName");
     const planName = params.get("name");
+    const planUrl = params.get("planUrl");
 
     if (pdfFileName) {
       setPdfFromQuery(pdfFileName);
@@ -128,6 +132,9 @@ export default function ChatPage() {
     if (planName) {
       setSelectedFileName(planName);
       setActivePlanName(planName);
+    }
+    if (planUrl) {
+      setSelectedPdfUrl(planUrl);
     }
   }, []);
 
@@ -158,6 +165,9 @@ export default function ChatPage() {
       if (!selectedPdfName) {
         throw new Error("No plan selected. Go to Uploads and choose a PDF.");
       }
+      if (!selectedPdfUrl) {
+        throw new Error("No plan URL available. Re-open the plan from Uploads.");
+      }
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -166,8 +176,7 @@ export default function ChatPage() {
         },
         body: JSON.stringify({
           message: input,
-          pdfFileName: selectedPdf || selectedFileName,
-          userEmail: email,
+          pdfUrl: selectedPdfUrl,
         }),
       });
 
@@ -214,7 +223,7 @@ export default function ChatPage() {
   }
 
   useEffect(() => {
-    if (!pdfFromQuery || !selectedPdf || isAsking || history.length > 0) return;
+    if (!pdfFromQuery || !selectedPdf || !selectedPdfUrl || isAsking || history.length > 0) return;
 
     const autoQuestion = "Analyse this building plan and summarise key construction details.";
     const userMessage: ChatMessage = {
@@ -238,8 +247,7 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             message: autoQuestion,
-            pdfFileName: selectedPdf || selectedFileName,
-            userEmail: email,
+            pdfUrl: selectedPdfUrl,
           }),
         });
 
@@ -276,7 +284,7 @@ export default function ChatPage() {
     };
 
     void runAutoAnalysis();
-  }, [pdfFromQuery, selectedPdf, isAsking, history.length, email]);
+  }, [pdfFromQuery, selectedPdf, selectedPdfUrl, isAsking, history.length]);
 
   function onLogout(): void {
     clearSignedInEmail();
