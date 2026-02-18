@@ -1,30 +1,39 @@
+// app/api/chat/route.ts
 export const runtime = "nodejs";
-
 
 import { NextRequest } from "next/server";
 import OpenAI from "openai";
 
-
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+type Body = {
+  question?: string;
+  pdfUrl?: string; // must be a direct, publicly fetchable URL (e.g., Vercel Blob public url)
+};
 
 async function extractTextFromPdf(buffer: Buffer): Promise<string> {
-  const pdfParse = (await import("pdf-parse")).default;
-  const result = await pdfParse(buffer);
-  return result.text ?? "";
+  // Server-safe PDF parser for Vercel
+  const { extractText } = await import("unpdf");
+  const { text } = await extractText(buffer, { mergePages: true });
+  return (text ?? "").trim();
 }
-
 
 export async function GET() {
   return Response.json({ error: "Method not allowed. Use POST." }, { status: 405 });
 }
 
-
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { question, pdfUrl } = body ?? {};
+    if (!process.env.OPENAI_API_KEY) {
+      return Response.json(
+        { error: "Missing OPENAI_API_KEY on server." },
+        { status: 500 }
+      );
+    }
 
+    const body = (await req.json()) as Body;
+    const question = body?.question?.trim();
+    const pdfUrl = body?.pdfUrl?.trim();
 
     if (!question || !pdfUrl) {
       return Response.json(
@@ -33,72 +42,87 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Basic URL sanity check
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(pdfUrl);
+    } catch {
+      return Response.json({ error: "pdfUrl is not a valid URL" }, { status: 400 });
+    }
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      return Response.json({ error: "pdfUrl must be http/https" }, { status: 400 });
+    }
 
-    const pdfResponse = await fetch(pdfUrl, { cache: "no-store" });
+    // Fetch PDF bytes
+    const pdfResponse = await fetch(pdfUrl, {
+      // blob URLs can be cached; no-store avoids weird stale fetches while testing
+      cache: "no-store",
+    });
+
     if (!pdfResponse.ok) {
       return Response.json(
-        { error: `Failed to fetch PDF: ${pdfResponse.status} ${pdfResponse.statusText}` },
-        { status: 502 }
+        { error: `Failed to fetch PDF (${pdfResponse.status})` },
+        { status: 400 }
       );
     }
 
+    const contentType = pdfResponse.headers.get("content-type") || "";
+    // Not always reliable, but helps catch wrong URLs
+    if (!contentType.toLowerCase().includes("pdf")) {
+      // still allow it if it *is* a pdf but served without proper header
+      // just proceed; worst case parsing fails and we return a clean error
+    }
 
-    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
+    const arrayBuffer = await pdfResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
+    // Extract text
+    const pdfText = await extractTextFromPdf(buffer);
 
-    let extractedText: string;
-    try {
-      extractedText = (await extractTextFromPdf(pdfBuffer)).trim();
-    } catch (parseError) {
-      console.error("[/api/chat] PDF parse error:", parseError);
+    if (!pdfText) {
       return Response.json(
-        { error: "Failed to parse PDF." },
+        { error: "Could not extract any text from the PDF (might be scanned images)." },
         { status: 422 }
       );
     }
 
+    // Optional safety: cap huge PDFs so you don't blow tokens
+    const MAX_CHARS = 120_000; // ~roughly 30k tokens depending on content
+    const clippedText = pdfText.length > MAX_CHARS ? pdfText.slice(0, MAX_CHARS) : pdfText;
 
-    if (!extractedText) {
-      return Response.json(
-        { error: "No text could be extracted. The PDF may be image-based." },
-        { status: 422 }
-      );
-    }
+    const system = `You are a helpful assistant. Answer using ONLY the provided PDF text.
+If the PDF does not contain the answer, say you can't find it in the PDF.`;
 
+    const user = `PDF TEXT:
+"""
+${clippedText}
+"""
 
-    const MAX_CHARS = 48000;
-    const documentText =
-      extractedText.length > MAX_CHARS
-        ? extractedText.slice(0, MAX_CHARS) + "\n\n[Document truncated]"
-        : extractedText;
-
+QUESTION:
+${question}`;
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
-      max_tokens: 700,
       messages: [
-        {
-          role: "system",
-          content:
-            "You are an expert building plan analyst. Answer using ONLY the document text. If not stated, say: Not stated in the plan.",
-        },
-        {
-          role: "user",
-          content: `DOCUMENT TEXT:\n\n${documentText}\n\n---\n\nQUESTION: ${question}`,
-        },
+        { role: "system", content: system },
+        { role: "user", content: user },
       ],
     });
 
+    const answer = completion.choices?.[0]?.message?.content?.trim() || "";
 
-    const answer =
-      completion.choices[0]?.message?.content?.trim() ?? "Not stated in the plan.";
-
-
-    return Response.json({ answer });
-  } catch (error: unknown) {
-    console.error("[/api/chat] Unhandled error:", error);
-    const message = error instanceof Error ? error.message : "Internal server error";
+    return Response.json({
+      answer,
+      meta: {
+        charsUsed: clippedText.length,
+        clipped: pdfText.length > MAX_CHARS,
+      },
+    });
+  } catch (err: any) {
+    // Keep the error message simple but useful
+    const message =
+      typeof err?.message === "string" ? err.message : "Unexpected server error";
     return Response.json({ error: message }, { status: 500 });
   }
 }
