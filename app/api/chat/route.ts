@@ -9,10 +9,23 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
 async function extractTextFromPdf(buffer: Uint8Array): Promise<string> {
-  // unpdf is a server-safe PDF parser with no browser-global dependencies
-  const { extractText } = await import("unpdf");
-  const { text } = await extractText(buffer, { mergePages: true });
-  return text ?? "";
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "";
+  const loadingTask = pdfjsLib.getDocument({
+    data: buffer,
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    useSystemFonts: true,
+  });
+  const pdf = await loadingTask.promise;
+  const pages = await Promise.all(
+    Array.from({ length: pdf.numPages }, async (_, i) => {
+      const page = await pdf.getPage(i + 1);
+      const content = await page.getTextContent();
+      return content.items.map((item: any) => ("str" in item ? item.str : "")).join(" ");
+    })
+  );
+  return pages.join("\n");
 }
 
 
