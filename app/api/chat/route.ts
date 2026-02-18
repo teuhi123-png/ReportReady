@@ -4,38 +4,55 @@ import OpenAI from "openai";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
     const { question, pdfUrl } = body;
 
     if (!pdfUrl) {
       return Response.json(
         {
-          error: "No PDF URL provided",
+          error: "Missing pdfUrl",
         },
         { status: 400 }
       );
     }
+
+    const res = await fetch(pdfUrl);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    const mod = await import("pdf-parse");
+    const pdf = (mod as any).default ?? (mod as any);
+    const data = await pdf(buffer);
+
+    const pdfText = data.text;
 
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
+
       messages: [
         {
           role: "system",
-          content: "You analyse building plans and answer questions.",
+          content: "You are a construction plan analysis AI.",
         },
+
         {
           role: "user",
           content: `
-PDF URL:
-${pdfUrl}
+BUILDING PLAN TEXT:
 
 
-Question:
+${pdfText}
+
+
+QUESTION:
+
+
 ${question}
-`,
+          `,
         },
       ],
     });
@@ -43,10 +60,10 @@ ${question}
     return Response.json({
       answer: completion.choices[0].message.content,
     });
-  } catch (err: any) {
+  } catch (e: any) {
     return Response.json(
       {
-        error: err.message,
+        error: e.message,
       },
       { status: 500 }
     );
