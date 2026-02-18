@@ -9,7 +9,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 
 async function extractTextFromPdf(buffer: Uint8Array): Promise<string> {
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.js");
   pdfjsLib.GlobalWorkerOptions.workerSrc = "";
   const loadingTask = pdfjsLib.getDocument({
     data: buffer,
