@@ -351,7 +351,6 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
         const finalName = safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
         const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${finalName}`;
         const uploadedAt = new Date().toISOString();
-        const extractedText = await extractPdfText(file.data);
 
         const pathname = getBlobPdfPath(uniqueName);
         const uploaded = await put(pathname, file.data, {
@@ -371,7 +370,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
               uploadedAt,
               url,
               userEmail,
-              extractedText,
+              extractedText: "",
             } satisfies UploadMetadataEntry
           ),
           {
@@ -404,7 +403,6 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
       const finalName = safeName.toLowerCase().endsWith(".pdf") ? safeName : `${safeName}.pdf`;
       const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${finalName}`;
       const outputPath = path.join(uploadsDir, uniqueName);
-      const extractedText = await extractPdfText(file.data);
 
       await writeFile(outputPath, file.data);
       const fileStat = await stat(outputPath);
@@ -417,7 +415,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
         uploadedAt,
         url: `/api/uploads/${encodeURIComponent(uniqueName)}`,
         userEmail,
-        extractedText,
+        extractedText: "",
       };
 
       return {
