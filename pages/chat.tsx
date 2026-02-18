@@ -7,6 +7,10 @@ import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type ChatApiResponse = {
   ok?: boolean;
+  handler?: string;
+  received?: {
+    question?: string;
+  };
   answer?: string;
   reply?: string;
   error?: string;
@@ -173,14 +177,16 @@ export default function ChatPage() {
         throw new Error("No plan URL available. Re-open the plan from Uploads.");
       }
 
+      const question = input;
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: input,
-          pdfUrl: selectedPdf.url,
+          pdfUrl: selectedPdf?.url,
+          question,
         }),
       });
 
@@ -199,7 +205,7 @@ export default function ChatPage() {
         throw new Error(data?.error || raw || `HTTP ${res.status}`);
       }
 
-      const assistantText = data?.answer ?? data?.reply;
+      const assistantText = data?.answer ?? data?.reply ?? data?.received?.question;
       if (!assistantText) throw new Error("Empty response from server");
 
       setHistory((prev) => [
@@ -244,14 +250,16 @@ export default function ChatPage() {
       setTick(0);
 
       try {
+        const question = autoQuestion;
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            message: autoQuestion,
-            pdfUrl: selectedPdf.url,
+            pdfUrl: selectedPdf?.url,
+            question,
           }),
         });
 
