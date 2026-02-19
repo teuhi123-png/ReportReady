@@ -226,9 +226,9 @@ export default function ChatPage() {
     };
   }, [selectedPdf?.url]);
 
-  async function onAsk(): Promise<void> {
+  async function onAsk(prefilled?: string): Promise<void> {
     if (isAsking) return;
-    const input = message.trim();
+    const input = (prefilled ?? message).trim();
     if (!input) {
       setStatus("Please enter a message.");
       return;
@@ -447,6 +447,44 @@ export default function ChatPage() {
             </div>
 
             <div className="chat-input-wrap">
+              <div className="quick-actions">
+                <button
+                  type="button"
+                  className="quick-action-btn"
+                  onClick={() => {
+                    const prompt = "Summarise this building plan.";
+                    setMessage(prompt);
+                    void onAsk(prompt);
+                  }}
+                  disabled={isAsking}
+                >
+                  Summarise Plan
+                </button>
+                <button
+                  type="button"
+                  className="quick-action-btn"
+                  onClick={() => {
+                    const prompt = "What materials are specified?";
+                    setMessage(prompt);
+                    void onAsk(prompt);
+                  }}
+                  disabled={isAsking}
+                >
+                  List Materials
+                </button>
+                <button
+                  type="button"
+                  className="quick-action-btn"
+                  onClick={() => {
+                    const prompt = "What structural details are included?";
+                    setMessage(prompt);
+                    void onAsk(prompt);
+                  }}
+                  disabled={isAsking}
+                >
+                  Find Structural Notes
+                </button>
+              </div>
               <label className="input-field" htmlFor="chat-question">
                 <div className="label">Question</div>
                 <textarea
@@ -462,7 +500,7 @@ export default function ChatPage() {
                 <Link href="/uploads">
                   <Button variant="secondary">Go to Uploads</Button>
                 </Link>
-                <Button onClick={onAsk} loading={false} disabled={isAsking}>
+                <Button onClick={() => void onAsk()} loading={false} disabled={isAsking}>
                   Ask
                 </Button>
               </div>
@@ -519,6 +557,25 @@ export default function ChatPage() {
         .chat-panel .card-body {
           height: 100%;
           overflow: auto;
+        }
+        .quick-actions {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .quick-action-btn {
+          border: 1px solid #334155;
+          border-radius: 999px;
+          background: #0f172a;
+          color: #e5e7eb;
+          padding: 0.35rem 0.75rem;
+          font-size: 0.82rem;
+          line-height: 1.2;
+          cursor: pointer;
+        }
+        .quick-action-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
         @media (max-width: 1024px) {
           .chat-split {
