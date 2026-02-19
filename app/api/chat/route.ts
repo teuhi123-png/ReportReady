@@ -12,11 +12,9 @@ type Body = {
   pdfUrl?: string; // must be a direct, publicly fetchable URL (e.g., Vercel Blob public url)
 };
 
- async function extractTextFromPdf(buffer: Uint8Array): Promise<string>
-{
-  // Server-safe PDF parser for Vercel
+async function extractTextFromPdf(uint8: Uint8Array): Promise<string> {
   const { extractText } = await import("unpdf");
-  const { text } = await extractText(buffer, { mergePages: true });
+  const { text } = await extractText(uint8, { mergePages: true });
   return (text ?? "").trim();
 }
 
