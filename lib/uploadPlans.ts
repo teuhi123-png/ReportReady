@@ -371,7 +371,7 @@ export async function savePdfUploadRequest(req: IncomingMessage): Promise<Upload
         const uploadedAt = new Date().toISOString();
 
         const pathname = getBlobPdfPath(uniqueName);
-        const uploaded = await put(pathname, file.data, {
+        const uploaded = await put(pathname, Buffer.from(file.data), {
           access: "public",
           addRandomSuffix: false,
           contentType: "application/pdf",
