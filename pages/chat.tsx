@@ -60,6 +60,20 @@ function renderWithBold(text: string): ReactNode {
   );
 }
 
+function renderAssistantMessage(text: string): ReactNode {
+  const match = text.match(/\s*\((Page\s+\d+)\)\s*$/i);
+  if (!match) return renderWithBold(text);
+
+  const pageRef = match[1];
+  const body = text.replace(/\s*\((Page\s+\d+)\)\s*$/i, "").trim();
+  return (
+    <>
+      {body ? renderWithBold(body) : null}{" "}
+      <span className="page-ref">({pageRef})</span>
+    </>
+  );
+}
+
 function looksLikeJson(response: Response): boolean {
   const contentType = response.headers.get("content-type") ?? "";
   return contentType.toLowerCase().includes("application/json");
@@ -422,7 +436,11 @@ export default function ChatPage() {
                       {entry.role === "assistant" ? "Assistant" : "You"} ·{" "}
                       {new Date(entry.createdAt).toLocaleTimeString()}
                     </div>
-                    <div>{renderWithBold(entry.content)}</div>
+                    <div>
+                      {entry.role === "assistant"
+                        ? renderAssistantMessage(entry.content)
+                        : renderWithBold(entry.content)}
+                    </div>
                   </article>
                 ))
               )}
@@ -493,6 +511,10 @@ export default function ChatPage() {
           border-radius: 8px;
           border: 1px solid #1f2937;
           background: white;
+        }
+        .page-ref {
+          color: #94a3b8;
+          font-size: 0.8em;
         }
         .chat-panel .card-body {
           height: 100%;
