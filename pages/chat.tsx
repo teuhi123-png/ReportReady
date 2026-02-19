@@ -16,7 +16,6 @@ type ChatApiResponse = {
   };
   answer?: string;
   reply?: string;
-  page?: number | null;
   error?: string;
 };
 
@@ -35,7 +34,6 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
-  page?: number | null;
 };
 
 function loadingLabel(count: number): string {
@@ -81,29 +79,17 @@ function looksLikeJson(response: Response): boolean {
   return contentType.toLowerCase().includes("application/json");
 }
 
-function extractMentionedPage(text: string): number | null {
-  const match = text.match(/\bpage\s+(\d+)\b/i);
-  if (!match) return null;
-  const parsed = Number.parseInt(match[1], 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
-
-async function renderPdfPageToCanvas(
-  pdfUrl: string,
-  pageNum: number,
-  canvas: HTMLCanvasElement
-): Promise<{ pageCount: number; renderedPage: number }> {
+async function renderFirstPageToCanvas(pdfUrl: string, canvas: HTMLCanvasElement): Promise<void> {
   const pdfjsLib = pdfjsLibCache ?? (await import("pdfjs-dist"));
   pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
   pdfjsLibCache = pdfjsLib;
 
   const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
   const doc = await loadingTask.promise;
-  const safePage = Math.min(Math.max(1, pageNum), Math.max(1, doc.numPages));
-  const selectedPage = await doc.getPage(safePage);
-  const viewport = selectedPage.getViewport({ scale: 1.15 });
+  const page = await doc.getPage(1);
+  const viewport = page.getViewport({ scale: 1.15 });
   const ctx = canvas.getContext("2d");
-  if (!ctx) return { pageCount: doc.numPages, renderedPage: safePage };
+  if (!ctx) return;
 
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.floor(viewport.width * dpr);
@@ -113,32 +99,7 @@ async function renderPdfPageToCanvas(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  await selectedPage.render({ canvas, canvasContext: ctx, viewport }).promise;
-  return { pageCount: doc.numPages, renderedPage: safePage };
-}
-
-async function renderPdfThumbnails(pdfUrl: string): Promise<string[]> {
-  const pdfjsLib = pdfjsLibCache ?? (await import("pdfjs-dist"));
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-  pdfjsLibCache = pdfjsLib;
-
-  const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
-  const doc = await loadingTask.promise;
-  const thumbs: string[] = [];
-
-  for (let i = 1; i <= doc.numPages; i += 1) {
-    const page = await doc.getPage(i);
-    const viewport = page.getViewport({ scale: 0.22 });
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    if (!ctx) continue;
-    canvas.width = Math.max(1, Math.floor(viewport.width));
-    canvas.height = Math.max(1, Math.floor(viewport.height));
-    await page.render({ canvas, canvasContext: ctx, viewport }).promise;
-    thumbs.push(canvas.toDataURL("image/jpeg", 0.8));
-  }
-
-  return thumbs;
+  await page.render({ canvas, canvasContext: ctx, viewport }).promise;
 }
 
 export default function ChatPage() {
@@ -155,18 +116,18 @@ export default function ChatPage() {
   const [pdfFromQuery, setPdfFromQuery] = useState("");
   const [viewerLoading, setViewerLoading] = useState(false);
   const [viewerError, setViewerError] = useState("");
-  const [previewPage, setPreviewPage] = useState(1);
-  const [previewPageCount, setPreviewPageCount] = useState(0);
-  const [previewGlow, setPreviewGlow] = useState(false);
-  const [previewThumbs, setPreviewThumbs] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [pendingSpeechSubmit, setPendingSpeechSubmit] = useState<string | null>(null);
+  const [voiceRepliesEnabled, setVoiceRepliesEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showVoiceNotice, setShowVoiceNotice] = useState(false);
+  const [speechUnlocked, setSpeechUnlocked] = useState(false);
   const planCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const planPreviewRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const speechFinalRef = useRef("");
   const messageRef = useRef("");
+  const lastAutoSpokenMessageIdRef = useRef("");
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -257,6 +218,70 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const enabled = window.localStorage.getItem("voiceRepliesEnabled");
+    if (enabled === "true") {
+      setVoiceRepliesEnabled(true);
+    }
+  }, []);
+
+  function isIOSDevice(): boolean {
+    if (typeof window === "undefined") return false;
+    const ua = window.navigator.userAgent;
+    return /iPad|iPhone|iPod/.test(ua) || (ua.includes("Mac") && "ontouchend" in document);
+  }
+
+  function prepareSpeechText(input: string): string {
+    return input.replace(/\s+/g, " ").trim().slice(0, 2500);
+  }
+
+  function pickSpeechVoice(): SpeechSynthesisVoice | null {
+    if (typeof window === "undefined" || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = ["en-NZ", "en-AU", "en-GB", "en-US"];
+    for (const lang of preferred) {
+      const voice = voices.find((v) => v.lang?.toLowerCase().startsWith(lang.toLowerCase()));
+      if (voice) return voice;
+    }
+    const fallback = voices.find((v) => v.lang?.toLowerCase().startsWith("en"));
+    return fallback ?? null;
+  }
+
+  function stopSpeaking(): void {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }
+
+  function speakText(rawText: string, fromUserGesture = false): boolean {
+    if (typeof window === "undefined" || !window.speechSynthesis) return false;
+    const text = prepareSpeechText(rawText);
+    if (!text) return false;
+
+    if (fromUserGesture) {
+      setSpeechUnlocked(true);
+      setShowVoiceNotice(false);
+    }
+
+    if (!fromUserGesture && isIOSDevice() && !speechUnlocked) {
+      setShowVoiceNotice(true);
+      return false;
+    }
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = pickSpeechVoice();
+    if (voice) utterance.voice = voice;
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+    return true;
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     const RecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!RecognitionCtor) return;
 
@@ -315,17 +340,7 @@ export default function ChatPage() {
       setViewerLoading(true);
       setViewerError("");
       try {
-        const result = await renderPdfPageToCanvas(
-          selectedPdf.url,
-          previewPage,
-          planCanvasRef.current as HTMLCanvasElement
-        );
-        if (!cancelled) {
-          setPreviewPageCount(result.pageCount);
-          if (result.renderedPage !== previewPage) {
-            setPreviewPage(result.renderedPage);
-          }
-        }
+        await renderFirstPageToCanvas(selectedPdf.url, planCanvasRef.current as HTMLCanvasElement);
       } catch (error) {
         if (!cancelled) {
           setViewerError(error instanceof Error ? error.message : "Could not render plan preview.");
@@ -340,41 +355,7 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedPdf?.url, previewPage]);
-
-  useEffect(() => {
-    setPreviewPage(1);
-    setPreviewPageCount(0);
-    setPreviewGlow(false);
-    setPreviewThumbs([]);
   }, [selectedPdf?.url]);
-
-  useEffect(() => {
-    if (!selectedPdf?.url) return;
-    let cancelled = false;
-    const run = async () => {
-      try {
-        const thumbs = await renderPdfThumbnails(selectedPdf.url);
-        if (!cancelled) setPreviewThumbs(thumbs);
-      } catch {
-        if (!cancelled) setPreviewThumbs([]);
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedPdf?.url]);
-
-  function focusPreviewPage(pageFromApi?: number | null, answerText?: string): void {
-    const pageRef = pageFromApi && pageFromApi > 0 ? pageFromApi : extractMentionedPage(answerText ?? "");
-    if (!pageRef) return;
-
-    setPreviewPage(pageRef);
-    setPreviewGlow(true);
-    planPreviewRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-    window.setTimeout(() => setPreviewGlow(false), 1000);
-  }
 
   async function onAsk(prefilled?: string): Promise<void> {
     if (isAsking) return;
@@ -430,8 +411,6 @@ export default function ChatPage() {
 
       const assistantText = data?.answer ?? data?.reply ?? data?.received?.question;
       if (!assistantText) throw new Error("Empty response from server");
-      const assistantPage = data?.page ?? null;
-      focusPreviewPage(assistantPage, assistantText);
 
       setHistory((prev) => [
         ...prev,
@@ -446,7 +425,6 @@ export default function ChatPage() {
           role: "assistant",
           content: assistantText,
           createdAt: Date.now(),
-          page: assistantPage,
         },
       ]);
       setMessage("");
@@ -465,6 +443,18 @@ export default function ChatPage() {
     if (!text) return;
     void onAsk(text);
   }, [pendingSpeechSubmit, isAsking]);
+
+  useEffect(() => {
+    if (!voiceRepliesEnabled) return;
+    const latest = history[history.length - 1];
+    if (!latest || latest.role !== "assistant") return;
+    if (lastAutoSpokenMessageIdRef.current === latest.id) return;
+
+    const spoke = speakText(latest.content, false);
+    if (spoke) {
+      lastAutoSpokenMessageIdRef.current = latest.id;
+    }
+  }, [history, voiceRepliesEnabled, speechUnlocked]);
 
   function onMicToggle(): void {
     if (!speechSupported) {
@@ -532,8 +522,6 @@ export default function ChatPage() {
         }
 
         const assistantContent = payload?.answer ?? payload?.reply ?? payload?.error ?? "Request failed";
-        const assistantPage = payload?.page ?? null;
-        focusPreviewPage(assistantPage, assistantContent);
         setHistory((prev) => [
           ...prev,
           {
@@ -541,7 +529,6 @@ export default function ChatPage() {
             role: "assistant",
             content: assistantContent,
             createdAt: Date.now(),
-            page: assistantPage,
           },
         ]);
       } catch (error) {
@@ -582,11 +569,6 @@ export default function ChatPage() {
             <div className="panel-block">
               <div className="label">Selected PDF</div>
               <div className="panel-value">{selectedFileName}</div>
-              {previewPageCount > 0 ? (
-                <div className="muted">
-                  Previewing page {previewPage} of {previewPageCount}
-                </div>
-              ) : null}
               {selectedPdf?.url ? (
                 <Link
                   href={`/plans/${encodeURIComponent(selectedPdf.pdfFileName ?? selectedFileName)}?planUrl=${encodeURIComponent(selectedPdf.url)}&name=${encodeURIComponent(selectedFileName)}`}
@@ -597,31 +579,7 @@ export default function ChatPage() {
               ) : null}
               {activePlanName ? <div className="muted">Analysing: {activePlanName}</div> : null}
             </div>
-            <div
-              className={`plan-preview-wrap ${previewGlow ? "plan-preview-glow" : ""}`.trim()}
-              ref={planPreviewRef}
-            >
-              {previewThumbs.length > 0 ? (
-                <div className="preview-thumb-sidebar">
-                  {previewThumbs.map((thumb, idx) => {
-                    const pageNum = idx + 1;
-                    return (
-                      <button
-                        key={`thumb-${pageNum}`}
-                        type="button"
-                        className={`preview-thumb-btn ${previewPage === pageNum ? "active" : ""}`.trim()}
-                        onClick={() => {
-                          setPreviewPage(pageNum);
-                          planPreviewRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-                        }}
-                      >
-                        <div className="preview-thumb-label">P{pageNum}</div>
-                        <img src={thumb} alt={`Page ${pageNum}`} />
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
+            <div className="plan-preview-wrap">
               <div className="preview-main">
               {viewerError ? <div className="alert-card">{viewerError}</div> : null}
               {viewerLoading ? <div className="muted">Loading plan preview...</div> : null}
@@ -660,14 +618,16 @@ export default function ChatPage() {
                         ? renderAssistantMessage(entry.content)
                         : renderWithBold(entry.content)}
                     </div>
-                    {entry.role === "assistant" && entry.page && entry.page > 0 ? (
+                    {entry.role === "assistant" ? (
                       <div className="bubble-actions">
                         <button
                           type="button"
                           className="view-in-plan-btn"
-                          onClick={() => focusPreviewPage(entry.page, entry.content)}
+                          onClick={() => {
+                            speakText(entry.content, true);
+                          }}
                         >
-                          View in Plan
+                          🔊 Speak
                         </button>
                       </div>
                     ) : null}
@@ -726,6 +686,31 @@ export default function ChatPage() {
                   onChange={(event) => setMessage(event.target.value)}
                 />
               </label>
+              <div className="voice-toggle-row">
+                <label className="voice-toggle-label">
+                  <input
+                    type="checkbox"
+                    checked={voiceRepliesEnabled}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setVoiceRepliesEnabled(enabled);
+                      if (typeof window !== "undefined") {
+                        window.localStorage.setItem("voiceRepliesEnabled", enabled ? "true" : "false");
+                      }
+                      if (enabled && isIOSDevice() && !speechUnlocked) {
+                        setShowVoiceNotice(true);
+                      }
+                      if (!enabled) {
+                        stopSpeaking();
+                      }
+                    }}
+                  />
+                  <span>Voice replies</span>
+                </label>
+                {showVoiceNotice ? (
+                  <span className="voice-notice">On iPhone, tap Speak once to enable audio.</span>
+                ) : null}
+              </div>
               <div className="chat-actions">
                 <Link href="/uploads">
                   <Button variant="secondary">Go to Uploads</Button>
@@ -743,6 +728,11 @@ export default function ChatPage() {
                 <Button onClick={() => void onAsk()} loading={false} disabled={isAsking}>
                   Ask
                 </Button>
+                {isSpeaking ? (
+                  <button type="button" className="stop-speech-btn" onClick={stopSpeaking}>
+                    Stop
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>
@@ -778,41 +768,9 @@ export default function ChatPage() {
           background: #020617;
           overflow: auto;
           display: flex;
-          justify-content: flex-start;
+          justify-content: center;
           align-items: flex-start;
           padding: 14px;
-          gap: 12px;
-        }
-        .preview-thumb-sidebar {
-          width: 78px;
-          min-width: 78px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-        .preview-thumb-btn {
-          border: 1px solid #334155;
-          border-radius: 8px;
-          background: #0f172a;
-          color: #e5e7eb;
-          padding: 6px;
-          cursor: pointer;
-          text-align: center;
-        }
-        .preview-thumb-btn.active {
-          border-color: #60a5fa;
-          box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.45);
-          background: #1e293b;
-        }
-        .preview-thumb-label {
-          font-size: 0.72rem;
-          color: #94a3b8;
-          margin-bottom: 4px;
-        }
-        .preview-thumb-btn img {
-          width: 100%;
-          display: block;
-          border-radius: 4px;
         }
         .preview-main {
           flex: 1;
@@ -828,11 +786,6 @@ export default function ChatPage() {
           border-radius: 8px;
           border: 1px solid #1f2937;
           background: white;
-        }
-        .plan-preview-glow {
-          animation: planGlow 900ms ease;
-          border-color: #60a5fa;
-          box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.4);
         }
         .page-ref {
           color: #94a3b8;
@@ -854,6 +807,33 @@ export default function ChatPage() {
         .chat-panel .card-body {
           height: 100%;
           overflow: auto;
+        }
+        .voice-toggle-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .voice-toggle-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          color: #cbd5e1;
+          font-size: 0.88rem;
+        }
+        .voice-notice {
+          color: #94a3b8;
+          font-size: 0.78rem;
+        }
+        .stop-speech-btn {
+          border: 1px solid #ef4444;
+          border-radius: 999px;
+          background: rgba(127, 29, 29, 0.3);
+          color: #fecaca;
+          padding: 0.35rem 0.8rem;
+          font-size: 0.82rem;
+          line-height: 1.2;
+          cursor: pointer;
         }
         .quick-actions {
           display: flex;
@@ -894,14 +874,6 @@ export default function ChatPage() {
           opacity: 0.6;
           cursor: not-allowed;
         }
-        @keyframes planGlow {
-          0% {
-            box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.55);
-          }
-          100% {
-            box-shadow: 0 0 0 10px rgba(96, 165, 250, 0);
-          }
-        }
         @keyframes micPulse {
           0% {
             box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35);
@@ -924,10 +896,6 @@ export default function ChatPage() {
           }
           .plan-preview-wrap {
             min-height: 320px;
-          }
-          .preview-thumb-sidebar {
-            width: 68px;
-            min-width: 68px;
           }
         }
       `}</style>
