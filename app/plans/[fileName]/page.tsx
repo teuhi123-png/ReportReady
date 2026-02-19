@@ -23,11 +23,11 @@ async function renderPageToCanvas(
   pageNum: number,
   canvasEl: HTMLCanvasElement,
   scale: number,
-  fitWidth: boolean,
-  containerWidth: number
+  fitWidth: boolean
 ): Promise<void> {
   const pdfPage = await doc.getPage(pageNum);
   const baseViewport = pdfPage.getViewport({ scale: 1 });
+  const containerWidth = canvasEl.parentElement?.clientWidth ?? 1024;
   const fitScale = containerWidth > 0 ? (containerWidth - 28) / baseViewport.width : 1;
   const renderScale = Math.max(0.1, (fitWidth ? fitScale : 1) * scale);
   const viewport = pdfPage.getViewport({ scale: renderScale });
@@ -59,7 +59,6 @@ export default function PlanViewerPage({ params }: PageProps) {
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
-  const viewportRef = useRef<HTMLDivElement | null>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const planUrl = searchParams?.get("planUrl") ?? "";
@@ -135,9 +134,9 @@ export default function PlanViewerPage({ params }: PageProps) {
   }, [pdfLib, planUrl]);
 
   useEffect(() => {
-    if (!pdfDoc || !mainCanvasRef.current || page < 1) return;
-    const containerWidth = viewportRef.current?.clientWidth ?? 1024;
-    void renderPageToCanvas(pdfDoc, page, mainCanvasRef.current, scale, fitWidth, containerWidth).catch((err) =>
+    if (!pdfDoc) return;
+    if (!mainCanvasRef.current) return;
+    void renderPageToCanvas(pdfDoc, page, mainCanvasRef.current, scale, fitWidth).catch((err) =>
       setError(String(err))
     );
   }, [pdfDoc, page, scale, fitWidth]);
@@ -215,7 +214,7 @@ export default function PlanViewerPage({ params }: PageProps) {
           </div>
         </div>
 
-        <section className="viewer-canvas" ref={viewportRef}>
+        <section className="viewer-canvas">
           {error ? <div className="viewer-error">{error}</div> : null}
           {isLoading ? <div className="viewer-note">Loading PDF...</div> : null}
           <canvas ref={mainCanvasRef} className="main-canvas" />
