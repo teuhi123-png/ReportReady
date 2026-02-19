@@ -334,7 +334,7 @@ export default function UploadPage() {
                         <Link
                           href={`/plans/${encodeURIComponent(file.pdfFileName ?? file.name)}?planUrl=${encodeURIComponent(file.url)}&name=${encodeURIComponent(file.name)}`}
                         >
-                          <Button type="button" variant="secondary">View Plans</Button>
+                          <Button type="button" variant="secondary">View</Button>
                         </Link>
                         <Button
                           type="button"

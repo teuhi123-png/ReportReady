@@ -326,6 +326,14 @@ export default function ChatPage() {
             <div className="panel-block">
               <div className="label">Selected PDF</div>
               <div className="panel-value">{selectedFileName}</div>
+              {selectedPdf?.url ? (
+                <Link
+                  href={`/plans/${encodeURIComponent(selectedPdf.pdfFileName ?? selectedFileName)}?planUrl=${encodeURIComponent(selectedPdf.url)}&name=${encodeURIComponent(selectedFileName)}`}
+                  className="panel-link"
+                >
+                  View Plan
+                </Link>
+              ) : null}
               {activePlanName ? <div className="muted">Analysing: {activePlanName}</div> : null}
             </div>
             <div className="panel-block">

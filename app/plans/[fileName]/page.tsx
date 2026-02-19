@@ -1,206 +1,394 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type PageProps = {
-  params: {
+  params: Promise<{
     fileName: string;
-  };
+  }>;
 };
 
-function toTitleCaseName(rawName: string): string {
+function decodeFileName(rawName: string): string {
   return decodeURIComponent(rawName).replace(/\.(pdf|png|jpg|jpeg)$/i, "");
-}
-
-function getInitialImageUrls(imagesParam: string | null): string[] {
-  if (!imagesParam) return [];
-  return imagesParam
-    .split(",")
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .map((value) => {
-      try {
-        return decodeURIComponent(value);
-      } catch {
-        return value;
-      }
-    });
 }
 
 export default function PlanViewerPage({ params }: PageProps) {
   const searchParams = useSearchParams();
-  const planUrl = searchParams?.get("planUrl") ?? "";
-  const explicitName = searchParams?.get("name") ?? "";
-
-  const imageUrls = useMemo(
-    () => getInitialImageUrls(searchParams?.get("images") ?? null),
-    [searchParams]
-  );
-
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [fileName, setFileName] = useState("plan");
+  const [pdfLib, setPdfLib] = useState<any>(null);
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [selectedPage, setSelectedPage] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [fitWidth, setFitWidth] = useState(true);
+  const [mainImage, setMainImage] = useState("");
+  const [thumbnails, setThumbnails] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const viewportRef = useRef<HTMLDivElement | null>(null);
 
-  const activeImage = imageUrls[selectedIndex] ?? "";
-  const displayName = explicitName || toTitleCaseName(params.fileName);
+  const planUrl = searchParams?.get("planUrl") ?? "";
+  const displayName = searchParams?.get("name") ?? fileName;
 
-  function zoomIn(): void {
-    setZoom((prev) => Math.min(3, Number((prev + 0.2).toFixed(2))));
+  useEffect(() => {
+    let active = true;
+    const resolveParams = async () => {
+      const resolved = await params;
+      if (!active) return;
+      setFileName(decodeFileName(resolved.fileName));
+    };
+    void resolveParams();
+    return () => {
+      active = false;
+    };
+  }, [params]);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      try {
+        const lib = await import("pdfjs-dist");
+        (lib as any).GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${
+          (lib as any).version
+        }/pdf.worker.min.js`;
+        if (active) setPdfLib(lib);
+      } catch (loadError) {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : "Failed to load PDF viewer.");
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pdfLib || !planUrl) return;
+    let active = true;
+
+    const run = async () => {
+      setIsLoading(true);
+      setError("");
+      setMainImage("");
+      setThumbnails([]);
+      try {
+        const loadingTask = pdfLib.getDocument({ url: planUrl });
+        const doc = await loadingTask.promise;
+        if (!active) return;
+
+        setPdfDoc(doc);
+        setPageCount(doc.numPages);
+        setSelectedPage(1);
+
+        const thumbs: string[] = [];
+        for (let page = 1; page <= doc.numPages; page += 1) {
+          const pdfPage = await doc.getPage(page);
+          const viewport = pdfPage.getViewport({ scale: 0.2 });
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+          canvas.width = Math.max(1, Math.floor(viewport.width));
+          canvas.height = Math.max(1, Math.floor(viewport.height));
+          await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+          thumbs.push(canvas.toDataURL("image/jpeg", 0.84));
+        }
+
+        if (active) {
+          setThumbnails(thumbs);
+        }
+      } catch (renderError) {
+        if (!active) return;
+        setError(renderError instanceof Error ? renderError.message : "Failed to open PDF.");
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      active = false;
+    };
+  }, [pdfLib, planUrl]);
+
+  useEffect(() => {
+    if (!pdfDoc || selectedPage < 1 || selectedPage > pageCount) return;
+    let active = true;
+
+    const renderSelected = async () => {
+      try {
+        const page = await pdfDoc.getPage(selectedPage);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const containerWidth = viewportRef.current?.clientWidth ?? 1024;
+        const fitScale = containerWidth > 0 ? (containerWidth - 28) / baseViewport.width : 1;
+        const scale = Math.max(0.1, (fitWidth ? fitScale : 1) * zoom);
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        canvas.width = Math.max(1, Math.floor(viewport.width));
+        canvas.height = Math.max(1, Math.floor(viewport.height));
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        if (active) {
+          setMainImage(canvas.toDataURL("image/png"));
+        }
+      } catch (pageError) {
+        if (!active) return;
+        setError(pageError instanceof Error ? pageError.message : "Failed to render page.");
+      }
+    };
+
+    void renderSelected();
+
+    return () => {
+      active = false;
+    };
+  }, [pdfDoc, selectedPage, pageCount, fitWidth, zoom]);
+
+  function onPrev(): void {
+    setSelectedPage((prev) => Math.max(1, prev - 1));
   }
 
-  function zoomOut(): void {
-    setZoom((prev) => Math.max(0.4, Number((prev - 0.2).toFixed(2))));
+  function onNext(): void {
+    setSelectedPage((prev) => Math.min(pageCount, prev + 1));
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "grid",
-        gridTemplateColumns: "280px 1fr",
-        background: "#0b1020",
-        color: "#e5e7eb",
-      }}
-    >
-      <aside
-        style={{
-          borderRight: "1px solid #1f2937",
-          padding: "24px 16px",
-          background: "#0f172a",
-        }}
-      >
-        <div style={{ marginBottom: 16 }}>
-          <h1 style={{ margin: 0, fontSize: 20 }}>Plan Pages</h1>
-          <p style={{ margin: "8px 0 0", color: "#94a3b8", fontSize: 13 }}>{displayName}</p>
+    <div className="viewer-layout">
+      <aside className="viewer-sidebar">
+        <div className="viewer-header">
+          <h1>Plan Viewer</h1>
+          <p>{displayName}</p>
         </div>
 
-        {imageUrls.length === 0 ? (
-          <div
-            style={{
-              border: "1px solid #1f2937",
-              borderRadius: 12,
-              padding: 12,
-              color: "#94a3b8",
-              fontSize: 13,
-              lineHeight: 1.5,
-            }}
-          >
-            No rendered page images are available yet for this plan.
-          </div>
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {imageUrls.map((url, idx) => (
-              <button
-                key={`${url}-${idx}`}
-                type="button"
-                onClick={() => setSelectedIndex(idx)}
-                style={{
-                  textAlign: "left",
-                  background: idx === selectedIndex ? "#1e293b" : "#111827",
-                  border: idx === selectedIndex ? "1px solid #3b82f6" : "1px solid #1f2937",
-                  color: "#e5e7eb",
-                  borderRadius: 10,
-                  padding: 8,
-                  cursor: "pointer",
-                }}
-              >
-                <div style={{ fontSize: 12, marginBottom: 6, color: "#94a3b8" }}>Page {idx + 1}</div>
-                <img
-                  src={url}
-                  alt={`Plan page ${idx + 1}`}
-                  style={{ width: "100%", borderRadius: 8, display: "block", background: "#0b1020" }}
-                />
-              </button>
-            ))}
-          </div>
-        )}
+        {!planUrl ? <div className="viewer-note">No plan URL found. Open this from Uploads.</div> : null}
 
-        <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-          <Link href="/uploads" style={{ color: "#60a5fa", textDecoration: "none", fontSize: 14 }}>
-            Back to Uploads
-          </Link>
+        <div className="thumb-list">
+          {Array.from({ length: pageCount || 0 }, (_, idx) => idx + 1).map((pageNum) => (
+            <button
+              key={pageNum}
+              type="button"
+              onClick={() => setSelectedPage(pageNum)}
+              className={`thumb-item ${selectedPage === pageNum ? "active" : ""}`.trim()}
+            >
+              <div className="thumb-title">Page {pageNum}</div>
+              {thumbnails[pageNum - 1] ? (
+                <img src={thumbnails[pageNum - 1]} alt={`Page ${pageNum}`} />
+              ) : (
+                <div className="thumb-placeholder">Preview</div>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="sidebar-links">
+          <Link href="/uploads">Back to Uploads</Link>
           {planUrl ? (
-            <a href={planUrl} target="_blank" rel="noreferrer" style={{ color: "#60a5fa", textDecoration: "none", fontSize: 14 }}>
+            <a href={planUrl} target="_blank" rel="noreferrer">
               Open Original PDF
             </a>
           ) : null}
         </div>
       </aside>
 
-      <main style={{ padding: 24, display: "grid", gridTemplateRows: "auto 1fr", gap: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            border: "1px solid #1f2937",
-            borderRadius: 14,
-            padding: "12px 14px",
-            background: "#111827",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 12, color: "#94a3b8" }}>Viewing</div>
-            <div style={{ fontSize: 18 }}>{displayName}</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button type="button" onClick={zoomOut} style={{ borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e5e7eb", padding: "6px 12px", cursor: "pointer" }}>
-              -
+      <main className="viewer-main">
+        <div className="toolbar">
+          <div className="toolbar-left">
+            <button type="button" onClick={onPrev} disabled={selectedPage <= 1 || !pageCount}>
+              Prev
             </button>
-            <div style={{ minWidth: 70, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-              {Math.round(zoom * 100)}%
-            </div>
-            <button type="button" onClick={zoomIn} style={{ borderRadius: 8, border: "1px solid #334155", background: "#0f172a", color: "#e5e7eb", padding: "6px 12px", cursor: "pointer" }}>
-              +
+            <span>
+              Page {pageCount ? selectedPage : 0} of {pageCount}
+            </span>
+            <button type="button" onClick={onNext} disabled={!pageCount || selectedPage >= pageCount}>
+              Next
+            </button>
+          </div>
+          <div className="toolbar-right">
+            <button type="button" onClick={() => setZoom((prev) => Math.max(0.35, Number((prev - 0.15).toFixed(2))))} disabled={!pageCount}>
+              Zoom -
+            </button>
+            <span>{Math.round(zoom * 100)}%</span>
+            <button type="button" onClick={() => setZoom((prev) => Math.min(3, Number((prev + 0.15).toFixed(2))))} disabled={!pageCount}>
+              Zoom +
+            </button>
+            <button type="button" onClick={() => setFitWidth((prev) => !prev)} disabled={!pageCount}>
+              {fitWidth ? "Fit width: On" : "Fit width: Off"}
             </button>
           </div>
         </div>
 
-        <section
-          style={{
-            border: "1px solid #1f2937",
-            borderRadius: 16,
-            background: "#020617",
-            display: "grid",
-            placeItems: "center",
-            overflow: "auto",
-            padding: 20,
-          }}
-        >
-          {activeImage ? (
-            <img
-              src={activeImage}
-              alt="Selected plan page"
-              style={{
-                maxWidth: "100%",
-                maxHeight: "calc(100vh - 220px)",
-                transform: `scale(${zoom})`,
-                transformOrigin: "center center",
-                transition: "transform 120ms ease",
-                borderRadius: 12,
-                border: "1px solid #1f2937",
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                border: "1px dashed #334155",
-                borderRadius: 12,
-                padding: 24,
-                color: "#94a3b8",
-                textAlign: "center",
-                maxWidth: 420,
-                lineHeight: 1.6,
-              }}
-            >
-              Plan image previews are not available for this file yet.
-              <br />
-              Upload-generated page images can be passed via the <code>images</code> query parameter.
-            </div>
-          )}
+        <section className="viewer-canvas" ref={viewportRef}>
+          {error ? <div className="viewer-error">{error}</div> : null}
+          {isLoading ? <div className="viewer-note">Loading PDF...</div> : null}
+          {!isLoading && !error && mainImage ? (
+            <img src={mainImage} alt={`Plan page ${selectedPage}`} className="main-image" />
+          ) : null}
+          {!isLoading && !error && !mainImage && planUrl ? (
+            <div className="viewer-note">Rendering pages...</div>
+          ) : null}
         </section>
       </main>
+
+      <style jsx>{`
+        .viewer-layout {
+          min-height: 100vh;
+          display: grid;
+          grid-template-columns: 280px 1fr;
+          background: #0b1020;
+          color: #e5e7eb;
+        }
+        .viewer-sidebar {
+          border-right: 1px solid #1f2937;
+          padding: 16px;
+          background: #0f172a;
+          overflow: auto;
+        }
+        .viewer-header h1 {
+          margin: 0;
+          font-size: 20px;
+        }
+        .viewer-header p {
+          margin: 8px 0 0;
+          color: #94a3b8;
+          font-size: 13px;
+        }
+        .thumb-list {
+          margin-top: 14px;
+          display: grid;
+          gap: 10px;
+        }
+        .thumb-item {
+          text-align: left;
+          border-radius: 10px;
+          padding: 8px;
+          border: 1px solid #1f2937;
+          background: #111827;
+          color: #e5e7eb;
+          cursor: pointer;
+        }
+        .thumb-item.active {
+          border-color: #3b82f6;
+          background: #1e293b;
+        }
+        .thumb-title {
+          font-size: 12px;
+          color: #94a3b8;
+          margin-bottom: 6px;
+        }
+        .thumb-item img {
+          width: 100%;
+          border-radius: 8px;
+          display: block;
+          background: #020617;
+        }
+        .thumb-placeholder {
+          border-radius: 8px;
+          border: 1px dashed #334155;
+          color: #94a3b8;
+          font-size: 12px;
+          text-align: center;
+          padding: 18px 8px;
+        }
+        .sidebar-links {
+          margin-top: 12px;
+          display: grid;
+          gap: 8px;
+        }
+        .sidebar-links a {
+          color: #60a5fa;
+          text-decoration: none;
+          font-size: 14px;
+        }
+        .viewer-main {
+          display: grid;
+          grid-template-rows: auto 1fr;
+          gap: 12px;
+          padding: 16px;
+        }
+        .toolbar {
+          border: 1px solid #1f2937;
+          border-radius: 12px;
+          background: #111827;
+          padding: 12px;
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .toolbar-left,
+        .toolbar-right {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .toolbar button {
+          border: 1px solid #334155;
+          border-radius: 8px;
+          background: #0f172a;
+          color: #e5e7eb;
+          padding: 6px 10px;
+          cursor: pointer;
+        }
+        .toolbar button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        .toolbar span {
+          color: #94a3b8;
+          font-size: 13px;
+        }
+        .viewer-canvas {
+          border: 1px solid #1f2937;
+          border-radius: 14px;
+          background: #020617;
+          overflow: auto;
+          display: grid;
+          place-items: center;
+          padding: 12px;
+        }
+        .main-image {
+          width: auto;
+          max-width: 100%;
+          height: auto;
+          border: 1px solid #1f2937;
+          border-radius: 8px;
+          background: white;
+        }
+        .viewer-note {
+          border: 1px dashed #334155;
+          border-radius: 10px;
+          color: #94a3b8;
+          text-align: center;
+          padding: 14px;
+          font-size: 13px;
+        }
+        .viewer-error {
+          border: 1px solid #ef4444;
+          color: #fecaca;
+          background: rgba(127, 29, 29, 0.25);
+          border-radius: 10px;
+          padding: 12px;
+          max-width: 520px;
+          margin-bottom: 8px;
+        }
+        @media (max-width: 900px) {
+          .viewer-layout {
+            grid-template-columns: 1fr;
+          }
+          .viewer-sidebar {
+            border-right: none;
+            border-bottom: 1px solid #1f2937;
+            max-height: 45vh;
+          }
+        }
+      `}</style>
     </div>
   );
 }
