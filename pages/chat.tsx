@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import Button from "../components/ui/Button";
 import DashboardShell from "../components/DashboardShell";
 import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
+
+let pdfjsLibCache: any = null;
 
 type ChatApiResponse = {
   ok?: boolean;
@@ -63,6 +65,29 @@ function looksLikeJson(response: Response): boolean {
   return contentType.toLowerCase().includes("application/json");
 }
 
+async function renderFirstPageToCanvas(pdfUrl: string, canvas: HTMLCanvasElement): Promise<void> {
+  const pdfjsLib = pdfjsLibCache ?? (await import("pdfjs-dist"));
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  pdfjsLibCache = pdfjsLib;
+
+  const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
+  const doc = await loadingTask.promise;
+  const firstPage = await doc.getPage(1);
+  const viewport = firstPage.getViewport({ scale: 1.15 });
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.floor(viewport.width * dpr);
+  canvas.height = Math.floor(viewport.height * dpr);
+  canvas.style.width = `${Math.floor(viewport.width)}px`;
+  canvas.style.height = `${Math.floor(viewport.height)}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  await firstPage.render({ canvas, canvasContext: ctx, viewport }).promise;
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -75,6 +100,9 @@ export default function ChatPage() {
   const [selectedPdf, setSelectedPdf] = useState<UploadedPlan | null>(null);
   const [activePlanName, setActivePlanName] = useState("");
   const [pdfFromQuery, setPdfFromQuery] = useState("");
+  const [viewerLoading, setViewerLoading] = useState(false);
+  const [viewerError, setViewerError] = useState("");
+  const planCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -157,6 +185,31 @@ export default function ChatPage() {
   }, [isAsking]);
 
   const loadingText = useMemo(() => loadingLabel(tick), [tick]);
+
+  useEffect(() => {
+    if (!selectedPdf?.url || !planCanvasRef.current) return;
+    let cancelled = false;
+
+    const run = async () => {
+      setViewerLoading(true);
+      setViewerError("");
+      try {
+        await renderFirstPageToCanvas(selectedPdf.url, planCanvasRef.current as HTMLCanvasElement);
+      } catch (error) {
+        if (!cancelled) {
+          setViewerError(error instanceof Error ? error.message : "Could not render plan preview.");
+        }
+      } finally {
+        if (!cancelled) setViewerLoading(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPdf?.url]);
 
   async function onAsk(): Promise<void> {
     if (isAsking) return;
@@ -320,8 +373,8 @@ export default function ChatPage() {
         </>
       }
     >
-      <div className="dashboard-grid">
-        <aside className="card side-panel">
+      <div className="chat-split">
+        <aside className="card plan-preview-panel">
           <div className="card-body">
             <div className="panel-block">
               <div className="label">Selected PDF</div>
@@ -336,26 +389,24 @@ export default function ChatPage() {
               ) : null}
               {activePlanName ? <div className="muted">Analysing: {activePlanName}</div> : null}
             </div>
+            <div className="plan-preview-wrap">
+              {viewerError ? <div className="alert-card">{viewerError}</div> : null}
+              {viewerLoading ? <div className="muted">Loading plan preview...</div> : null}
+              {!selectedPdf?.url ? <div className="muted">No PDF selected.</div> : null}
+              <canvas ref={planCanvasRef} className="plan-preview-canvas" />
+            </div>
+          </div>
+        </aside>
+
+        <section className="card chat-main chat-panel">
+          <div className="card-body chat-layout">
+            {status ? <div className="alert-card">{status}</div> : null}
             <div className="panel-block">
               <div className="label">Status</div>
               <div className={`status-chip ${isAsking ? "status-active" : ""}`.trim()}>
                 {isAsking ? loadingText : "Ready"}
               </div>
             </div>
-            <div className="tips-box">
-              <div className="label">Tips</div>
-              <ul>
-                <li>What are the key dimensions in this plan?</li>
-                <li>Summarize structural notes and materials.</li>
-                <li>List rooms and any labeled areas.</li>
-              </ul>
-            </div>
-          </div>
-        </aside>
-
-        <section className="card chat-main">
-          <div className="card-body chat-layout">
-            {status ? <div className="alert-card">{status}</div> : null}
 
             <div className="chat-history">
               {history.length === 0 ? (
@@ -400,6 +451,52 @@ export default function ChatPage() {
           </div>
         </section>
       </div>
+      <style jsx>{`
+        .chat-split {
+          display: grid;
+          grid-template-columns: 3fr 2fr;
+          gap: 16px;
+          min-height: 0;
+        }
+        .plan-preview-panel,
+        .chat-panel {
+          min-height: 0;
+        }
+        .plan-preview-panel .card-body {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          min-height: 0;
+        }
+        .plan-preview-wrap {
+          flex: 1;
+          min-height: 280px;
+          border: 1px solid #1f2937;
+          border-radius: 12px;
+          background: #020617;
+          overflow: auto;
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          padding: 14px;
+        }
+        .plan-preview-canvas {
+          max-width: 100%;
+          height: auto;
+          border-radius: 8px;
+          border: 1px solid #1f2937;
+          background: white;
+        }
+        @media (max-width: 1024px) {
+          .chat-split {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr;
+          }
+          .plan-preview-wrap {
+            min-height: 320px;
+          }
+        }
+      `}</style>
     </DashboardShell>
   );
 }
