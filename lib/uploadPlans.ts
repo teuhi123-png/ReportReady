@@ -23,7 +23,7 @@ export type UploadedPlanRecord = UploadedPlan & {
 type ParsedFilePart = {
   filename: string;
   contentType: string;
-  data: Buffer;
+  data: Uint8Array;
 };
 
 type ParsedMultipartData = {
@@ -101,25 +101,43 @@ function isPdfFile(contentType: string, filename: string): boolean {
   return normalizedType === "application/pdf" || normalizedName.endsWith(".pdf");
 }
 
-async function readRequestBody(req: IncomingMessage): Promise<Buffer> {
-  const chunks: Buffer[] = [];
+function latin1StringToUint8(s: string): Uint8Array {
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+  return out;
+}
+
+function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+async function readRequestBody(req: IncomingMessage): Promise<Uint8Array> {
+  const chunks: Uint8Array[] = [];
   let total = 0;
 
   for await (const chunk of req) {
-    const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += chunkBuffer.length;
+    const chunkBytes =
+      chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk as ArrayBuffer);
+    total += chunkBytes.length;
     if (total > MAX_UPLOAD_BYTES) {
       throw new Error("Upload payload is too large");
     }
-    chunks.push(chunkBuffer);
+    chunks.push(chunkBytes);
   }
 
-  return Buffer.concat(chunks);
+  return concatUint8Arrays(chunks);
 }
 
-function parseMultipartData(body: Buffer, boundary: string): ParsedMultipartData {
+function parseMultipartData(body: Uint8Array, boundary: string): ParsedMultipartData {
   const boundaryToken = `--${boundary}`;
-  const raw = body.toString("latin1");
+  const raw = new TextDecoder("latin1").decode(body);
   const segments = raw.split(boundaryToken);
   const files: ParsedFilePart[] = [];
   const fields: Record<string, string> = {};
@@ -153,13 +171,13 @@ function parseMultipartData(body: Buffer, boundary: string): ParsedMultipartData
       files.push({
         filename: filenameMatch[1],
         contentType,
-        data: Buffer.from(dataRaw, "latin1"),
+        data: latin1StringToUint8(dataRaw),
       });
       continue;
     }
 
     if (fieldName) {
-      fields[fieldName] = Buffer.from(dataRaw, "latin1").toString("utf8").trim();
+      fields[fieldName] = new TextDecoder("utf-8").decode(latin1StringToUint8(dataRaw)).trim();
     }
   }
 

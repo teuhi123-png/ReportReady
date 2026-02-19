@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const BUILD_STAMP = "chat-uint8-deploy-check-v1";
 
 type Body = {
   question?: string;
@@ -116,6 +117,7 @@ ${question}`;
 
     return Response.json({
       answer,
+      buildStamp: BUILD_STAMP,
       meta: {
         charsUsed: clippedText.length,
         clipped: pdfText.length > MAX_CHARS,
@@ -125,6 +127,6 @@ ${question}`;
     // Keep the error message simple but useful
     const message =
       typeof err?.message === "string" ? err.message : "Unexpected server error";
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: message, buildStamp: BUILD_STAMP }, { status: 500 });
   }
 }
