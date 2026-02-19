@@ -59,6 +59,8 @@ export default function PlanViewerPage({ params }: PageProps) {
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [renderedPage, setRenderedPage] = useState(0);
+  const viewerRef = useRef<HTMLDivElement | null>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const planUrl = searchParams?.get("planUrl") ?? "";
@@ -136,10 +138,29 @@ export default function PlanViewerPage({ params }: PageProps) {
   useEffect(() => {
     if (!pdfDoc) return;
     if (!mainCanvasRef.current) return;
-    void renderPageToCanvas(pdfDoc, page, mainCanvasRef.current, scale, fitWidth).catch((err) =>
-      setError(String(err))
-    );
+    let cancelled = false;
+    void renderPageToCanvas(pdfDoc, page, mainCanvasRef.current, scale, fitWidth)
+      .then(() => {
+        if (cancelled) return;
+        setRenderedPage(page);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [pdfDoc, page, scale, fitWidth]);
+
+  useEffect(() => {
+    if (!renderedPage) return;
+    const timer = window.setTimeout(() => {
+      viewerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      mainCanvasRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 20);
+    return () => window.clearTimeout(timer);
+  }, [renderedPage]);
 
   function onPrev(): void {
     setPage((prev) => Math.max(1, prev - 1));
@@ -214,7 +235,7 @@ export default function PlanViewerPage({ params }: PageProps) {
           </div>
         </div>
 
-        <section className="viewer-canvas">
+        <section className="viewer-canvas" ref={viewerRef}>
           {error ? <div className="viewer-error">{error}</div> : null}
           {isLoading ? <div className="viewer-note">Loading PDF...</div> : null}
           <canvas ref={mainCanvasRef} className="main-canvas" />
