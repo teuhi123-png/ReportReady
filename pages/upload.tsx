@@ -341,7 +341,7 @@ export default function UploadPage() {
                           variant="secondary"
                           onClick={() =>
                             void router.push(
-                              `/chat?pdfFileName=${encodeURIComponent(file.pdfFileName ?? file.name)}&name=${encodeURIComponent(file.name)}&planUrl=${encodeURIComponent(file.url)}`
+                              `/chat?planUrl=${encodeURIComponent(file.url)}&name=${encodeURIComponent(file.name)}`
                             )
                           }
                         >

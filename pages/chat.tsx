@@ -168,6 +168,7 @@ export default function ChatPage() {
       setActivePlanName(planName);
     }
     if (planUrl) {
+      setPdfFromQuery(planUrl);
       setSelectedPdf((prev) => ({
         name: prev?.name ?? pdfFileName ?? planName ?? "Selected plan",
         url: planUrl,
