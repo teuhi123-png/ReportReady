@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import type { ChangeEvent } from "react";
+import { put as clientPut } from "@vercel/blob/client";
 import Button from "../components/ui/Button";
 import DashboardShell from "../components/DashboardShell";
 import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
@@ -26,6 +27,13 @@ type UploadsApiResponse = {
   success?: boolean;
   files?: UploadedPlan[];
   items?: UploadedPlan[];
+  error?: string;
+};
+
+type BlobUploadTokenResponse = {
+  success?: boolean;
+  clientToken?: string;
+  pathname?: string;
   error?: string;
 };
 
@@ -119,33 +127,88 @@ export default function UploadPage() {
     setStatusMessage("Uploading plans...");
 
     try {
-      const formData = new FormData();
-      formData.append("projectName", projectName.trim());
-      formData.append("userEmail", email);
+      const uploadedPlans: UploadedPlan[] = [];
+
       for (const file of selectedFiles) {
-        formData.append("files", file);
+        setStatusMessage(`Uploading ${file.name}...`);
+
+        const tokenResponse = await fetch("/api/blob-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type,
+            userEmail: email,
+          }),
+        });
+
+        const tokenRaw = await tokenResponse.text();
+        let tokenPayload: BlobUploadTokenResponse | null = null;
+        if (isJsonResponse(tokenResponse)) {
+          try {
+            tokenPayload = tokenRaw ? (JSON.parse(tokenRaw) as BlobUploadTokenResponse) : null;
+          } catch {
+            tokenPayload = null;
+          }
+        }
+
+        if (!tokenResponse.ok || tokenPayload?.success === false) {
+          throw new Error(tokenPayload?.error || tokenRaw || "Could not start file upload.");
+        }
+
+        if (!tokenPayload?.clientToken || !tokenPayload.pathname) {
+          throw new Error("Upload token response was incomplete.");
+        }
+
+        const blob = await clientPut(tokenPayload.pathname, file, {
+          access: "public",
+          token: tokenPayload.clientToken,
+          multipart: true,
+          contentType: file.type || "application/pdf",
+        });
+
+        const metadataForm = new FormData();
+        metadataForm.append("projectName", projectName.trim());
+        metadataForm.append("userEmail", email);
+        metadataForm.append("blobUrl", blob.url);
+        metadataForm.append("blobPathname", blob.pathname);
+        metadataForm.append("filename", file.name);
+        metadataForm.append("size", String(file.size));
+
+        const metadataResponse = await fetch("/api/upload", {
+          method: "POST",
+          body: metadataForm,
+        });
+
+        const metadataRaw = await metadataResponse.text();
+        let metadataPayload: UploadApiResponse | null = null;
+        if (isJsonResponse(metadataResponse)) {
+          try {
+            metadataPayload = metadataRaw ? (JSON.parse(metadataRaw) as UploadApiResponse) : null;
+          } catch {
+            metadataPayload = null;
+          }
+        }
+
+        if (!metadataResponse.ok || metadataPayload?.success === false) {
+          throw new Error(metadataPayload?.error || metadataRaw || "Failed to save upload metadata.");
+        }
+
+        const fromMetadata = metadataPayload?.files ?? [];
+        if (fromMetadata.length > 0) {
+          uploadedPlans.push(...fromMetadata);
+        } else {
+          uploadedPlans.push({
+            name: file.name,
+            pathname: blob.pathname,
+            url: blob.url,
+          });
+        }
       }
-
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = (await response.json()) as UploadApiResponse;
-      console.log("UPLOAD RESPONSE:", payload);
-
-      if (!response.ok || payload.success === false) {
-        throw new Error(payload.error ?? "Upload failed. Please try again.");
-      }
-
-      if (payload.success !== true) {
-        throw new Error("Upload failed");
-      }
-
-      const uploaded = payload.files ?? [];
-      const savedProjectName = uploaded[0]?.projectName ?? "Untitled Project";
+      const savedProjectName = projectName.trim() || "Untitled Project";
       setStatusMessage(
-        `Successfully uploaded ${uploaded.length} PDF plan${
-          uploaded.length === 1 ? "" : "s"
+        `Successfully uploaded ${uploadedPlans.length} PDF plan${
+          uploadedPlans.length === 1 ? "" : "s"
         } to ${savedProjectName}.`
       );
       setSelectedFiles([]);

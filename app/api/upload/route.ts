@@ -21,7 +21,27 @@ export async function POST(req: Request) {
     const entries = formData.getAll("files");
 
     if (!entries.length) {
-      return Response.json({ success: false, error: "No files received" }, { status: 400 });
+      const blobUrl = String(formData.get("blobUrl") || "").trim();
+      const blobPathname = String(formData.get("blobPathname") || "").trim();
+      const filename = String(formData.get("filename") || "").trim();
+      const size = Number(formData.get("size") || 0);
+
+      if (!blobUrl || !blobPathname || !filename) {
+        return Response.json({ success: false, error: "No files received" }, { status: 400 });
+      }
+
+      const safeName = safePathSegment(filename);
+      return Response.json({
+        success: true,
+        files: [
+          {
+            name: safeName,
+            url: blobUrl,
+            size: Number.isFinite(size) ? size : 0,
+            pathname: blobPathname,
+          },
+        ],
+      });
     }
 
     const uploadedFiles: UploadedFile[] = [];
