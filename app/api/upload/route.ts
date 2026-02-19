@@ -46,9 +46,11 @@ export async function POST(req: Request) {
     }
 
     return Response.json({ success: true, files: uploadedFiles });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Upload failed";
+  } catch (error: any) {
     console.error("UPLOAD ERROR:", error);
-    return Response.json({ success: false, error: message }, { status: 500 });
+    return Response.json(
+      { error: error.message || "Upload failed" },
+      { status: 500 }
+    );
   }
 }
