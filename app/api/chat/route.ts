@@ -12,6 +12,13 @@ type Body = {
   pdfUrl?: string; // must be a direct, publicly fetchable URL (e.g., Vercel Blob public url)
 };
 
+function extractPageNumberFromText(value: string): number | null {
+  const match = value.match(/\bpage\s+(\d+)\b/i);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 async function extractTextFromPdf(uint8: Uint8Array): Promise<string> {
   const { extractText } = await import("unpdf");
   const { text } = await extractText(uint8, { mergePages: true });
@@ -92,7 +99,9 @@ export async function POST(req: NextRequest) {
     const clippedText = pdfText.length > MAX_CHARS ? pdfText.slice(0, MAX_CHARS) : pdfText;
 
     const system = `You are a helpful assistant. Answer using ONLY the provided PDF text.
-If the PDF does not contain the answer, say you can't find it in the PDF.`;
+If the PDF does not contain the answer, say you can't find it in the PDF.
+Return JSON only in this exact shape: {"answer":"...","page":number|null}
+When possible, include "(Page N)" at the end of answer and set page to the same N.`;
 
     const user = `PDF TEXT:
 """
@@ -111,10 +120,27 @@ ${question}`;
       ],
     });
 
-    const answer = completion.choices?.[0]?.message?.content?.trim() || "";
+    const rawContent = completion.choices?.[0]?.message?.content?.trim() || "";
+    let answer = rawContent;
+    let page: number | null = null;
+
+    try {
+      const parsed = JSON.parse(rawContent) as { answer?: string; page?: number | null };
+      answer = (parsed?.answer ?? rawContent ?? "").trim();
+      const numericPage = Number(parsed?.page);
+      page = Number.isFinite(numericPage) && numericPage > 0 ? numericPage : null;
+    } catch {
+      answer = rawContent;
+      page = extractPageNumberFromText(rawContent);
+    }
+
+    if (!page) {
+      page = extractPageNumberFromText(answer);
+    }
 
     return Response.json({
       answer,
+      page,
       buildStamp: BUILD_STAMP,
       meta: {
         charsUsed: clippedText.length,

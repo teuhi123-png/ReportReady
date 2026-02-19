@@ -16,6 +16,7 @@ type ChatApiResponse = {
   };
   answer?: string;
   reply?: string;
+  page?: number | null;
   error?: string;
 };
 
@@ -34,6 +35,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   createdAt: number;
+  page?: number | null;
 };
 
 function loadingLabel(count: number): string {
@@ -115,6 +117,30 @@ async function renderPdfPageToCanvas(
   return { pageCount: doc.numPages, renderedPage: safePage };
 }
 
+async function renderPdfThumbnails(pdfUrl: string): Promise<string[]> {
+  const pdfjsLib = pdfjsLibCache ?? (await import("pdfjs-dist"));
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  pdfjsLibCache = pdfjsLib;
+
+  const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
+  const doc = await loadingTask.promise;
+  const thumbs: string[] = [];
+
+  for (let i = 1; i <= doc.numPages; i += 1) {
+    const page = await doc.getPage(i);
+    const viewport = page.getViewport({ scale: 0.22 });
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    if (!ctx) continue;
+    canvas.width = Math.max(1, Math.floor(viewport.width));
+    canvas.height = Math.max(1, Math.floor(viewport.height));
+    await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+    thumbs.push(canvas.toDataURL("image/jpeg", 0.8));
+  }
+
+  return thumbs;
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -132,6 +158,7 @@ export default function ChatPage() {
   const [previewPage, setPreviewPage] = useState(1);
   const [previewPageCount, setPreviewPageCount] = useState(0);
   const [previewGlow, setPreviewGlow] = useState(false);
+  const [previewThumbs, setPreviewThumbs] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [pendingSpeechSubmit, setPendingSpeechSubmit] = useState<string | null>(null);
@@ -319,10 +346,28 @@ export default function ChatPage() {
     setPreviewPage(1);
     setPreviewPageCount(0);
     setPreviewGlow(false);
+    setPreviewThumbs([]);
   }, [selectedPdf?.url]);
 
-  function focusPreviewPageFromAnswer(answerText: string): void {
-    const pageRef = extractMentionedPage(answerText);
+  useEffect(() => {
+    if (!selectedPdf?.url) return;
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const thumbs = await renderPdfThumbnails(selectedPdf.url);
+        if (!cancelled) setPreviewThumbs(thumbs);
+      } catch {
+        if (!cancelled) setPreviewThumbs([]);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPdf?.url]);
+
+  function focusPreviewPage(pageFromApi?: number | null, answerText?: string): void {
+    const pageRef = pageFromApi && pageFromApi > 0 ? pageFromApi : extractMentionedPage(answerText ?? "");
     if (!pageRef) return;
 
     setPreviewPage(pageRef);
@@ -385,7 +430,8 @@ export default function ChatPage() {
 
       const assistantText = data?.answer ?? data?.reply ?? data?.received?.question;
       if (!assistantText) throw new Error("Empty response from server");
-      focusPreviewPageFromAnswer(assistantText);
+      const assistantPage = data?.page ?? null;
+      focusPreviewPage(assistantPage, assistantText);
 
       setHistory((prev) => [
         ...prev,
@@ -400,6 +446,7 @@ export default function ChatPage() {
           role: "assistant",
           content: assistantText,
           createdAt: Date.now(),
+          page: assistantPage,
         },
       ]);
       setMessage("");
@@ -485,7 +532,8 @@ export default function ChatPage() {
         }
 
         const assistantContent = payload?.answer ?? payload?.reply ?? payload?.error ?? "Request failed";
-        focusPreviewPageFromAnswer(assistantContent);
+        const assistantPage = payload?.page ?? null;
+        focusPreviewPage(assistantPage, assistantContent);
         setHistory((prev) => [
           ...prev,
           {
@@ -493,6 +541,7 @@ export default function ChatPage() {
             role: "assistant",
             content: assistantContent,
             createdAt: Date.now(),
+            page: assistantPage,
           },
         ]);
       } catch (error) {
@@ -552,10 +601,33 @@ export default function ChatPage() {
               className={`plan-preview-wrap ${previewGlow ? "plan-preview-glow" : ""}`.trim()}
               ref={planPreviewRef}
             >
+              {previewThumbs.length > 0 ? (
+                <div className="preview-thumb-sidebar">
+                  {previewThumbs.map((thumb, idx) => {
+                    const pageNum = idx + 1;
+                    return (
+                      <button
+                        key={`thumb-${pageNum}`}
+                        type="button"
+                        className={`preview-thumb-btn ${previewPage === pageNum ? "active" : ""}`.trim()}
+                        onClick={() => {
+                          setPreviewPage(pageNum);
+                          planPreviewRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                      >
+                        <div className="preview-thumb-label">P{pageNum}</div>
+                        <img src={thumb} alt={`Page ${pageNum}`} />
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <div className="preview-main">
               {viewerError ? <div className="alert-card">{viewerError}</div> : null}
               {viewerLoading ? <div className="muted">Loading plan preview...</div> : null}
               {!selectedPdf?.url ? <div className="muted">No PDF selected.</div> : null}
               <canvas ref={planCanvasRef} className="plan-preview-canvas" />
+              </div>
             </div>
           </div>
         </aside>
@@ -588,6 +660,17 @@ export default function ChatPage() {
                         ? renderAssistantMessage(entry.content)
                         : renderWithBold(entry.content)}
                     </div>
+                    {entry.role === "assistant" && entry.page && entry.page > 0 ? (
+                      <div className="bubble-actions">
+                        <button
+                          type="button"
+                          className="view-in-plan-btn"
+                          onClick={() => focusPreviewPage(entry.page, entry.content)}
+                        >
+                          View in Plan
+                        </button>
+                      </div>
+                    ) : null}
                   </article>
                 ))
               )}
@@ -695,9 +778,48 @@ export default function ChatPage() {
           background: #020617;
           overflow: auto;
           display: flex;
-          justify-content: center;
+          justify-content: flex-start;
           align-items: flex-start;
           padding: 14px;
+          gap: 12px;
+        }
+        .preview-thumb-sidebar {
+          width: 78px;
+          min-width: 78px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .preview-thumb-btn {
+          border: 1px solid #334155;
+          border-radius: 8px;
+          background: #0f172a;
+          color: #e5e7eb;
+          padding: 6px;
+          cursor: pointer;
+          text-align: center;
+        }
+        .preview-thumb-btn.active {
+          border-color: #60a5fa;
+          box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.45);
+          background: #1e293b;
+        }
+        .preview-thumb-label {
+          font-size: 0.72rem;
+          color: #94a3b8;
+          margin-bottom: 4px;
+        }
+        .preview-thumb-btn img {
+          width: 100%;
+          display: block;
+          border-radius: 4px;
+        }
+        .preview-main {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
         }
         .plan-preview-canvas {
           width: 100%;
@@ -715,6 +837,19 @@ export default function ChatPage() {
         .page-ref {
           color: #94a3b8;
           font-size: 0.8em;
+        }
+        .bubble-actions {
+          margin-top: 8px;
+        }
+        .view-in-plan-btn {
+          border: 1px solid #334155;
+          border-radius: 999px;
+          background: #0f172a;
+          color: #93c5fd;
+          padding: 0.25rem 0.7rem;
+          font-size: 0.78rem;
+          line-height: 1.2;
+          cursor: pointer;
         }
         .chat-panel .card-body {
           height: 100%;
@@ -789,6 +924,10 @@ export default function ChatPage() {
           }
           .plan-preview-wrap {
             min-height: 320px;
+          }
+          .preview-thumb-sidebar {
+            width: 68px;
+            min-width: 68px;
           }
         }
       `}</style>
