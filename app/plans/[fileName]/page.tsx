@@ -241,6 +241,8 @@ export default function PlanViewerPage({ params }: PageProps) {
           padding: 16px;
           background: #0f172a;
           overflow: auto;
+          position: relative;
+          z-index: 5;
         }
         .viewer-header h1 {
           margin: 0;
@@ -255,6 +257,9 @@ export default function PlanViewerPage({ params }: PageProps) {
           margin-top: 14px;
           display: grid;
           gap: 10px;
+          pointer-events: auto;
+          position: relative;
+          z-index: 6;
         }
         .thumb-item {
           text-align: left;
@@ -264,6 +269,8 @@ export default function PlanViewerPage({ params }: PageProps) {
           background: #111827;
           color: #e5e7eb;
           cursor: pointer;
+          position: relative;
+          z-index: 7;
         }
         .thumb-item.active {
           border-color: #3b82f6;
@@ -303,6 +310,14 @@ export default function PlanViewerPage({ params }: PageProps) {
           grid-template-rows: auto 1fr;
           gap: 12px;
           padding: 16px;
+          position: relative;
+          z-index: 1;
+        }
+        .viewer-main::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
         }
         .toolbar {
           border: 1px solid #1f2937;
@@ -345,6 +360,8 @@ export default function PlanViewerPage({ params }: PageProps) {
           display: grid;
           place-items: center;
           padding: 12px;
+          position: relative;
+          z-index: 1;
         }
         .main-image {
           width: auto;
