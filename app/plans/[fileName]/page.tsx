@@ -18,6 +18,34 @@ function decodeFileName(rawName: string): string {
   return decodeURIComponent(rawName).replace(/\.(pdf|png|jpg|jpeg)$/i, "");
 }
 
+async function renderPageToCanvas(
+  doc: any,
+  pageNum: number,
+  canvasEl: HTMLCanvasElement,
+  scale: number,
+  fitWidth: boolean,
+  containerWidth: number
+): Promise<void> {
+  const pdfPage = await doc.getPage(pageNum);
+  const baseViewport = pdfPage.getViewport({ scale: 1 });
+  const fitScale = containerWidth > 0 ? (containerWidth - 28) / baseViewport.width : 1;
+  const renderScale = Math.max(0.1, (fitWidth ? fitScale : 1) * scale);
+  const viewport = pdfPage.getViewport({ scale: renderScale });
+
+  const context = canvasEl.getContext("2d");
+  if (!context) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvasEl.width = Math.max(1, Math.floor(viewport.width * dpr));
+  canvasEl.height = Math.max(1, Math.floor(viewport.height * dpr));
+  canvasEl.style.width = `${Math.max(1, Math.floor(viewport.width))}px`;
+  canvasEl.style.height = `${Math.max(1, Math.floor(viewport.height))}px`;
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+  await pdfPage.render({ canvasContext: context, viewport }).promise;
+}
+
 export default function PlanViewerPage({ params }: PageProps) {
   const searchParams = useSearchParams();
   const [fileName, setFileName] = useState("plan");
@@ -28,11 +56,11 @@ export default function PlanViewerPage({ params }: PageProps) {
   const [zoom, setZoom] = useState(1);
   const scale = zoom;
   const [fitWidth, setFitWidth] = useState(true);
-  const [mainImage, setMainImage] = useState("");
   const [thumbnails, setThumbnails] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const planUrl = searchParams?.get("planUrl") ?? "";
   const displayName = searchParams?.get("name") ?? fileName;
@@ -65,7 +93,6 @@ export default function PlanViewerPage({ params }: PageProps) {
     const run = async () => {
       setIsLoading(true);
       setError("");
-      setMainImage("");
       setThumbnails([]);
       try {
         const loadingTask = pdfLib.getDocument({ url: planUrl });
@@ -108,39 +135,11 @@ export default function PlanViewerPage({ params }: PageProps) {
   }, [pdfLib, planUrl]);
 
   useEffect(() => {
-    if (!pdfDoc || page < 1 || page > pageCount) return;
-    let active = true;
-
-    const renderSelected = async () => {
-      try {
-        const pdfPage = await pdfDoc.getPage(page);
-        const baseViewport = pdfPage.getViewport({ scale: 1 });
-        const containerWidth = viewportRef.current?.clientWidth ?? 1024;
-        const fitScale = containerWidth > 0 ? (containerWidth - 28) / baseViewport.width : 1;
-        const renderScale = Math.max(0.1, (fitWidth ? fitScale : 1) * scale);
-        const viewport = pdfPage.getViewport({ scale: renderScale });
-
-        const canvas = document.createElement("canvas");
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        canvas.width = Math.max(1, Math.floor(viewport.width));
-        canvas.height = Math.max(1, Math.floor(viewport.height));
-
-        await pdfPage.render({ canvasContext: ctx, viewport }).promise;
-        if (active) {
-          setMainImage(canvas.toDataURL("image/png"));
-        }
-      } catch (pageError) {
-        if (!active) return;
-        setError(pageError instanceof Error ? pageError.message : "Failed to render page.");
-      }
-    };
-
-    void renderSelected();
-
-    return () => {
-      active = false;
-    };
+    if (!pdfDoc || !mainCanvasRef.current || page < 1) return;
+    const containerWidth = viewportRef.current?.clientWidth ?? 1024;
+    void renderPageToCanvas(pdfDoc, page, mainCanvasRef.current, scale, fitWidth, containerWidth).catch((err) =>
+      setError(String(err))
+    );
   }, [pdfDoc, page, scale, fitWidth]);
 
   function onPrev(): void {
@@ -219,12 +218,8 @@ export default function PlanViewerPage({ params }: PageProps) {
         <section className="viewer-canvas" ref={viewportRef}>
           {error ? <div className="viewer-error">{error}</div> : null}
           {isLoading ? <div className="viewer-note">Loading PDF...</div> : null}
-          {!isLoading && !error && mainImage ? (
-            <img src={mainImage} alt={`Plan page ${page}`} className="main-image" />
-          ) : null}
-          {!isLoading && !error && !mainImage && planUrl ? (
-            <div className="viewer-note">Rendering pages...</div>
-          ) : null}
+          <canvas ref={mainCanvasRef} className="main-canvas" />
+          {!isLoading && !error && !pdfDoc && planUrl ? <div className="viewer-note">Rendering pages...</div> : null}
         </section>
       </main>
 
@@ -363,7 +358,7 @@ export default function PlanViewerPage({ params }: PageProps) {
           position: relative;
           z-index: 1;
         }
-        .main-image {
+        .main-canvas {
           width: auto;
           max-width: 100%;
           height: auto;
