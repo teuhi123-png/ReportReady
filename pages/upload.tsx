@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useRouter } from "next/router";
 import type { ChangeEvent } from "react";
 import Button from "../components/ui/Button";
+import DashboardShell from "../components/DashboardShell";
 import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type UploadedPlan = {
@@ -167,27 +168,27 @@ export default function UploadPage() {
   }
 
   return (
-    <main className="page">
-      <div className="container">
+    <DashboardShell
+      pageTitle="Uploads"
+      email={email}
+      statusText={isUploading ? "Uploading..." : "Ready"}
+      actions={
+        <>
+          <Link href="/chat">
+            <Button variant="secondary">Go to Chat</Button>
+          </Link>
+          <Button variant="secondary" onClick={onLogout}>
+            Log out
+          </Button>
+        </>
+      }
+    >
+      <div className="upload-grid">
         <section className="card">
-          <div className="card-body" style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <div>
-                <h1 className="h1" style={{ marginBottom: 8 }}>
-                  Upload Site Plans
-                </h1>
-                <p className="muted" style={{ margin: 0 }}>
-                  Signed in as {email || "..."}. Upload PDFs and open them directly from the list.
-                </p>
-              </div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <Link href="/chat">
-                  <Button variant="secondary">Go to Chat</Button>
-                </Link>
-                <Button variant="secondary" onClick={onLogout}>
-                  Log out
-                </Button>
-              </div>
+          <div className="card-body upload-card">
+            <div className="upload-header">
+              <h2 className="h2">Upload Site Plans</h2>
+              <p className="muted">Upload PDFs and open them directly from your project list.</p>
             </div>
 
             <label className="input-field" htmlFor="project-name">
@@ -202,13 +203,15 @@ export default function UploadPage() {
               />
             </label>
 
-            <label className="input-field" htmlFor="site-plan-upload">
-              <div className="label">PDF files</div>
+            <label className="upload-dropzone" htmlFor="site-plan-upload">
+              <span className="label">PDF files</span>
+              <span className="upload-dropzone-title">Choose files to upload</span>
+              <span className="muted">Drag-and-drop look enabled. Click to browse your files.</span>
               <input
                 id="site-plan-upload"
                 ref={fileInputRef}
                 type="file"
-                className="input"
+                className="input upload-file-input"
                 accept="application/pdf,.pdf"
                 multiple
                 onChange={handleFileChange}
@@ -216,68 +219,54 @@ export default function UploadPage() {
             </label>
 
             {selectedFiles.length > 0 && (
-              <div className="card" style={{ borderRadius: 12 }}>
-                <div className="card-body" style={{ padding: "12px 14px", display: "grid", gap: 8 }}>
-                  <div className="label" style={{ marginBottom: 0 }}>
-                    Selected files ({selectedFiles.length})
-                  </div>
-                  <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 4 }}>
-                    {selectedFiles.map((file, index) => (
-                      <li key={`${file.name}-${file.size}-${index}`} style={{ wordBreak: "break-word" }}>
-                        {file.name} ({formatFileSize(file.size)})
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="muted">Total size: {formatFileSize(selectedSizeBytes)}</div>
-                </div>
+              <div className="selection-list">
+                <div className="label">Selected files ({selectedFiles.length})</div>
+                <ul>
+                  {selectedFiles.map((file, index) => (
+                    <li key={`${file.name}-${file.size}-${index}`}>
+                      <span>{file.name}</span>
+                      <span className="muted">{formatFileSize(file.size)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="muted">Total size: {formatFileSize(selectedSizeBytes)}</div>
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="upload-actions">
               <Button type="button" onClick={onUpload} loading={isUploading} disabled={selectedFiles.length === 0}>
-                Upload Plans
+                Upload PDF
               </Button>
               <Link href="/chat">
                 <Button variant="secondary">Go to Chat</Button>
               </Link>
             </div>
 
-            {statusMessage && <div className="muted">{statusMessage}</div>}
+            {statusMessage ? <div className="upload-status">{statusMessage}</div> : null}
           </div>
         </section>
 
         <section className="card">
-          <div className="card-body" style={{ display: "grid", gap: 10 }}>
-            <div className="h2" style={{ marginBottom: 0 }}>
-              Uploaded PDFs
-            </div>
+          <div className="card-body upload-table-wrap">
+            <h2 className="h2">Uploaded PDFs</h2>
             {isLoadingUploads ? (
               <div className="muted">Loading uploads...</div>
             ) : uploadedFiles.length === 0 ? (
               <div className="muted">No PDFs uploaded yet.</div>
             ) : (
-              <div style={{ display: "grid", gap: 8 }}>
+              <div className="upload-table">
+                <div className="upload-row upload-row-head">
+                  <span>File name</span>
+                  <span>Project</span>
+                  <span>Uploaded</span>
+                  <span>Action</span>
+                </div>
                 {uploadedFiles.map((file) => (
-                  <div
-                    key={`${file.url}-${file.uploadedAt ?? "unknown"}`}
-                    className="card"
-                    style={{ borderRadius: 12, boxShadow: "none" }}
-                  >
-                    <div
-                      className="card-body"
-                      style={{
-                        padding: "10px 12px",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <div style={{ display: "grid", gap: 3 }}>
-                        <strong style={{ wordBreak: "break-word" }}>{file.name}</strong>
-                        <span className="muted">Project: {file.projectName ?? "Untitled Project"}</span>
-                        <span className="muted">{formatUploadedAt(file.uploadedAt)}</span>
-                      </div>
+                  <div className="upload-row" key={`${file.url}-${file.uploadedAt ?? "unknown"}`}>
+                    <span className="upload-name">{file.name}</span>
+                    <span>{file.projectName ?? "Untitled Project"}</span>
+                    <span>{formatUploadedAt(file.uploadedAt)}</span>
+                    <span>
                       <Button
                         type="button"
                         variant="secondary"
@@ -287,9 +276,9 @@ export default function UploadPage() {
                           )
                         }
                       >
-                        View Plan
+                        Analyse
                       </Button>
-                    </div>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -297,6 +286,6 @@ export default function UploadPage() {
           </div>
         </section>
       </div>
-    </main>
+    </DashboardShell>
   );
 }

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import Button from "../components/ui/Button";
+import DashboardShell from "../components/DashboardShell";
 import { clearSignedInEmail, readSignedInEmail } from "../lib/auth";
 
 type ChatApiResponse = {
@@ -304,99 +305,93 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="page">
-      <div className="container">
-        <section className="card">
-          <div className="card-body" style={{ display: "grid", gap: 14 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <div>
-                <h1 className="h1" style={{ marginBottom: 8 }}>
-                  SiteMind AI Assistant
-                </h1>
-                <p className="muted" style={{ margin: 0 }}>
-                  Signed in as {email || "..."}.
-                </p>
-                <p className="muted" style={{ margin: "6px 0 0" }}>
-                  Selected PDF: {selectedFileName}
-                </p>
-                {activePlanName && (
-                  <p className="muted" style={{ margin: "6px 0 0" }}>
-                    Analysing: {activePlanName}
-                  </p>
-                )}
+    <DashboardShell
+      pageTitle="Plan Chat"
+      email={email}
+      statusText={isAsking ? "Analysing..." : "Ready"}
+      actions={
+        <>
+          <Link href="/uploads">
+            <Button variant="secondary">Go to Uploads</Button>
+          </Link>
+          <Button variant="secondary" onClick={onLogout}>
+            Log out
+          </Button>
+        </>
+      }
+    >
+      <div className="dashboard-grid">
+        <aside className="card side-panel">
+          <div className="card-body">
+            <div className="panel-block">
+              <div className="label">Selected PDF</div>
+              <div className="panel-value">{selectedFileName}</div>
+              {activePlanName ? <div className="muted">Analysing: {activePlanName}</div> : null}
+            </div>
+            <div className="panel-block">
+              <div className="label">Status</div>
+              <div className={`status-chip ${isAsking ? "status-active" : ""}`.trim()}>
+                {isAsking ? loadingText : "Ready"}
               </div>
-              <div style={{ display: "flex", gap: 8 }}>
+            </div>
+            <div className="tips-box">
+              <div className="label">Tips</div>
+              <ul>
+                <li>What are the key dimensions in this plan?</li>
+                <li>Summarize structural notes and materials.</li>
+                <li>List rooms and any labeled areas.</li>
+              </ul>
+            </div>
+          </div>
+        </aside>
+
+        <section className="card chat-main">
+          <div className="card-body chat-layout">
+            {status ? <div className="alert-card">{status}</div> : null}
+
+            <div className="chat-history">
+              {history.length === 0 ? (
+                <div className="muted">No messages yet.</div>
+              ) : (
+                history.map((entry) => (
+                  <article
+                    key={entry.id}
+                    className={`chat-bubble ${entry.role === "assistant" ? "chat-assistant" : "chat-user"}`.trim()}
+                  >
+                    <div className="chat-meta">
+                      {entry.role === "assistant" ? "Assistant" : "You"} ·{" "}
+                      {new Date(entry.createdAt).toLocaleTimeString()}
+                    </div>
+                    <div>{renderWithBold(entry.content)}</div>
+                  </article>
+                ))
+              )}
+            </div>
+
+            <div className="chat-input-wrap">
+              <label className="input-field" htmlFor="chat-question">
+                <div className="label">Question</div>
+                <textarea
+                  id="chat-question"
+                  className="input chat-textarea"
+                  rows={5}
+                  placeholder="Ask about dimensions, notes, or plan details..."
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                />
+              </label>
+              <div className="chat-actions">
                 <Link href="/uploads">
                   <Button variant="secondary">Go to Uploads</Button>
                 </Link>
-                <Button variant="secondary" onClick={onLogout}>
-                  Log out
+                <Button onClick={onAsk} loading={false} disabled={isAsking}>
+                  Ask
                 </Button>
               </div>
             </div>
-
-            <label className="input-field" htmlFor="chat-question">
-              <div className="label">Question</div>
-              <textarea
-                id="chat-question"
-                className="input"
-                rows={4}
-                placeholder="Ask about dimensions, notes, or plan details..."
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-              />
-            </label>
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Button onClick={onAsk} loading={false} disabled={isAsking}>
-                Ask
-              </Button>
-              <Link href="/uploads">
-                <Button variant="secondary">Go to Uploads</Button>
-              </Link>
-            </div>
-
-            {isAsking && <div className="muted">{loadingText}</div>}
-            {status && <div className="error">{status}</div>}
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="card-body" style={{ display: "grid", gap: 10 }}>
-            <div className="h2" style={{ marginBottom: 0 }}>
-              Chat History
-            </div>
-            {history.length === 0 ? (
-              <div className="muted">No messages yet.</div>
-            ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {history.map((message) => (
-                  <div
-                    key={message.id}
-                    className="card"
-                    style={{
-                      borderRadius: 12,
-                      boxShadow: "none",
-                      borderColor:
-                        message.role === "assistant"
-                          ? "rgba(34, 197, 94, 0.35)"
-                          : "rgba(37, 99, 235, 0.35)",
-                    }}
-                  >
-                    <div className="card-body" style={{ padding: "12px 14px", display: "grid", gap: 6 }}>
-                      <div className="label" style={{ marginBottom: 0 }}>
-                        {message.role === "assistant" ? "Assistant" : "You"} -{" "}
-                        {new Date(message.createdAt).toLocaleTimeString()}
-                      </div>
-                      <div style={{ lineHeight: 1.5 }}>{renderWithBold(message.content)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </section>
       </div>
-    </main>
+    </DashboardShell>
   );
 }
