@@ -3,6 +3,11 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import * as pdfjsLib from "pdfjs-dist";
+import { GlobalWorkerOptions } from "pdfjs-dist";
+
+GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 type PageProps = {
   params: Promise<{
@@ -47,19 +52,7 @@ export default function PlanViewerPage({ params }: PageProps) {
 
   useEffect(() => {
     let active = true;
-    const run = async () => {
-      try {
-        const lib = await import("pdfjs-dist");
-        (lib as any).GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${
-          (lib as any).version
-        }/pdf.worker.min.js`;
-        if (active) setPdfLib(lib);
-      } catch (loadError) {
-        if (!active) return;
-        setError(loadError instanceof Error ? loadError.message : "Failed to load PDF viewer.");
-      }
-    };
-    void run();
+    if (active) setPdfLib(pdfjsLib);
     return () => {
       active = false;
     };
