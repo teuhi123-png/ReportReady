@@ -24,8 +24,9 @@ export default function PlanViewerPage({ params }: PageProps) {
   const [pdfLib, setPdfLib] = useState<any>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [pageCount, setPageCount] = useState(0);
-  const [selectedPage, setSelectedPage] = useState(1);
+  const [page, setPage] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const scale = zoom;
   const [fitWidth, setFitWidth] = useState(true);
   const [mainImage, setMainImage] = useState("");
   const [thumbnails, setThumbnails] = useState<string[]>([]);
@@ -73,7 +74,7 @@ export default function PlanViewerPage({ params }: PageProps) {
 
         setPdfDoc(doc);
         setPageCount(doc.numPages);
-        setSelectedPage(1);
+        setPage(1);
 
         const thumbs: string[] = [];
         for (let page = 1; page <= doc.numPages; page += 1) {
@@ -107,17 +108,17 @@ export default function PlanViewerPage({ params }: PageProps) {
   }, [pdfLib, planUrl]);
 
   useEffect(() => {
-    if (!pdfDoc || selectedPage < 1 || selectedPage > pageCount) return;
+    if (!pdfDoc || page < 1 || page > pageCount) return;
     let active = true;
 
     const renderSelected = async () => {
       try {
-        const page = await pdfDoc.getPage(selectedPage);
-        const baseViewport = page.getViewport({ scale: 1 });
+        const pdfPage = await pdfDoc.getPage(page);
+        const baseViewport = pdfPage.getViewport({ scale: 1 });
         const containerWidth = viewportRef.current?.clientWidth ?? 1024;
         const fitScale = containerWidth > 0 ? (containerWidth - 28) / baseViewport.width : 1;
-        const scale = Math.max(0.1, (fitWidth ? fitScale : 1) * zoom);
-        const viewport = page.getViewport({ scale });
+        const renderScale = Math.max(0.1, (fitWidth ? fitScale : 1) * scale);
+        const viewport = pdfPage.getViewport({ scale: renderScale });
 
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
@@ -125,7 +126,7 @@ export default function PlanViewerPage({ params }: PageProps) {
         canvas.width = Math.max(1, Math.floor(viewport.width));
         canvas.height = Math.max(1, Math.floor(viewport.height));
 
-        await page.render({ canvasContext: ctx, viewport }).promise;
+        await pdfPage.render({ canvasContext: ctx, viewport }).promise;
         if (active) {
           setMainImage(canvas.toDataURL("image/png"));
         }
@@ -140,14 +141,14 @@ export default function PlanViewerPage({ params }: PageProps) {
     return () => {
       active = false;
     };
-  }, [pdfDoc, selectedPage, pageCount, fitWidth, zoom]);
+  }, [pdfDoc, page, scale, fitWidth]);
 
   function onPrev(): void {
-    setSelectedPage((prev) => Math.max(1, prev - 1));
+    setPage((prev) => Math.max(1, prev - 1));
   }
 
   function onNext(): void {
-    setSelectedPage((prev) => Math.min(pageCount, prev + 1));
+    setPage((prev) => Math.min(pageCount, prev + 1));
   }
 
   return (
@@ -165,8 +166,8 @@ export default function PlanViewerPage({ params }: PageProps) {
             <button
               key={pageNum}
               type="button"
-              onClick={() => setSelectedPage(pageNum)}
-              className={`thumb-item ${selectedPage === pageNum ? "active" : ""}`.trim()}
+              onClick={() => setPage(pageNum)}
+              className={`thumb-item ${page === pageNum ? "active" : ""}`.trim()}
             >
               <div className="thumb-title">Page {pageNum}</div>
               {thumbnails[pageNum - 1] ? (
@@ -191,13 +192,13 @@ export default function PlanViewerPage({ params }: PageProps) {
       <main className="viewer-main">
         <div className="toolbar">
           <div className="toolbar-left">
-            <button type="button" onClick={onPrev} disabled={selectedPage <= 1 || !pageCount}>
+            <button type="button" onClick={onPrev} disabled={page <= 1 || !pageCount}>
               Prev
             </button>
             <span>
-              Page {pageCount ? selectedPage : 0} of {pageCount}
+              Page {pageCount ? page : 0} of {pageCount}
             </span>
-            <button type="button" onClick={onNext} disabled={!pageCount || selectedPage >= pageCount}>
+            <button type="button" onClick={onNext} disabled={!pageCount || page >= pageCount}>
               Next
             </button>
           </div>
@@ -219,7 +220,7 @@ export default function PlanViewerPage({ params }: PageProps) {
           {error ? <div className="viewer-error">{error}</div> : null}
           {isLoading ? <div className="viewer-note">Loading PDF...</div> : null}
           {!isLoading && !error && mainImage ? (
-            <img src={mainImage} alt={`Plan page ${selectedPage}`} className="main-image" />
+            <img src={mainImage} alt={`Plan page ${page}`} className="main-image" />
           ) : null}
           {!isLoading && !error && !mainImage && planUrl ? (
             <div className="viewer-note">Rendering pages...</div>
