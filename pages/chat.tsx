@@ -252,6 +252,30 @@ export default function ChatPage() {
     setIsSpeaking(false);
   }
 
+  async function speakPremium(text: string) {
+
+ try {
+
+  const res = await fetch("/api/tts", {
+   method: "POST",
+   headers: { "Content-Type": "application/json" },
+   body: JSON.stringify({ text }),
+  });
+
+  if (!res.ok) return;
+
+  const blob = await res.blob();
+
+  const url = URL.createObjectURL(blob);
+
+  const audio = new Audio(url);
+
+  audio.play();
+
+ } catch {}
+
+}
+
   function speakText(rawText: string, fromUserGesture = false): boolean {
     if (typeof window === "undefined" || !window.speechSynthesis) return false;
     const text = prepareSpeechText(rawText);
@@ -411,6 +435,9 @@ export default function ChatPage() {
 
       const assistantText = data?.answer ?? data?.reply ?? data?.received?.question;
       if (!assistantText) throw new Error("Empty response from server");
+      if (voiceRepliesEnabled) {
+        speakPremium(assistantText);
+      }
 
       setHistory((prev) => [
         ...prev,
@@ -449,11 +476,7 @@ export default function ChatPage() {
     const latest = history[history.length - 1];
     if (!latest || latest.role !== "assistant") return;
     if (lastAutoSpokenMessageIdRef.current === latest.id) return;
-
-    const spoke = speakText(latest.content, false);
-    if (spoke) {
-      lastAutoSpokenMessageIdRef.current = latest.id;
-    }
+    lastAutoSpokenMessageIdRef.current = latest.id;
   }, [history, voiceRepliesEnabled, speechUnlocked]);
 
   function onMicToggle(): void {
@@ -522,6 +545,9 @@ export default function ChatPage() {
         }
 
         const assistantContent = payload?.answer ?? payload?.reply ?? payload?.error ?? "Request failed";
+        if (voiceRepliesEnabled) {
+          speakPremium(assistantContent);
+        }
         setHistory((prev) => [
           ...prev,
           {
