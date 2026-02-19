@@ -327,6 +327,7 @@ export default function PlanViewerPage({ params }: PageProps) {
         .viewer-main {
           flex: 1;
           height: 100%;
+          min-height: 0;
           display: flex;
           flex-direction: column;
           gap: 12px;
@@ -388,9 +389,10 @@ export default function PlanViewerPage({ params }: PageProps) {
           border-radius: 14px;
           background: #020617;
           overflow: auto;
-          display: grid;
-          place-items: center;
-          padding: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: flex-start;
+          padding: 12px 12px 16px;
           position: relative;
           z-index: 1;
         }
