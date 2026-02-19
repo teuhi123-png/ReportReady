@@ -79,17 +79,29 @@ function looksLikeJson(response: Response): boolean {
   return contentType.toLowerCase().includes("application/json");
 }
 
-async function renderFirstPageToCanvas(pdfUrl: string, canvas: HTMLCanvasElement): Promise<void> {
+function extractMentionedPage(text: string): number | null {
+  const match = text.match(/\bpage\s+(\d+)\b/i);
+  if (!match) return null;
+  const parsed = Number.parseInt(match[1], 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+async function renderPdfPageToCanvas(
+  pdfUrl: string,
+  pageNum: number,
+  canvas: HTMLCanvasElement
+): Promise<{ pageCount: number; renderedPage: number }> {
   const pdfjsLib = pdfjsLibCache ?? (await import("pdfjs-dist"));
   pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
   pdfjsLibCache = pdfjsLib;
 
   const loadingTask = pdfjsLib.getDocument({ url: pdfUrl });
   const doc = await loadingTask.promise;
-  const firstPage = await doc.getPage(1);
-  const viewport = firstPage.getViewport({ scale: 1.15 });
+  const safePage = Math.min(Math.max(1, pageNum), Math.max(1, doc.numPages));
+  const selectedPage = await doc.getPage(safePage);
+  const viewport = selectedPage.getViewport({ scale: 1.15 });
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx) return { pageCount: doc.numPages, renderedPage: safePage };
 
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.floor(viewport.width * dpr);
@@ -99,7 +111,8 @@ async function renderFirstPageToCanvas(pdfUrl: string, canvas: HTMLCanvasElement
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  await firstPage.render({ canvas, canvasContext: ctx, viewport }).promise;
+  await selectedPage.render({ canvas, canvasContext: ctx, viewport }).promise;
+  return { pageCount: doc.numPages, renderedPage: safePage };
 }
 
 export default function ChatPage() {
@@ -116,7 +129,11 @@ export default function ChatPage() {
   const [pdfFromQuery, setPdfFromQuery] = useState("");
   const [viewerLoading, setViewerLoading] = useState(false);
   const [viewerError, setViewerError] = useState("");
+  const [previewPage, setPreviewPage] = useState(1);
+  const [previewPageCount, setPreviewPageCount] = useState(0);
+  const [previewGlow, setPreviewGlow] = useState(false);
   const planCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const planPreviewRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -209,7 +226,17 @@ export default function ChatPage() {
       setViewerLoading(true);
       setViewerError("");
       try {
-        await renderFirstPageToCanvas(selectedPdf.url, planCanvasRef.current as HTMLCanvasElement);
+        const result = await renderPdfPageToCanvas(
+          selectedPdf.url,
+          previewPage,
+          planCanvasRef.current as HTMLCanvasElement
+        );
+        if (!cancelled) {
+          setPreviewPageCount(result.pageCount);
+          if (result.renderedPage !== previewPage) {
+            setPreviewPage(result.renderedPage);
+          }
+        }
       } catch (error) {
         if (!cancelled) {
           setViewerError(error instanceof Error ? error.message : "Could not render plan preview.");
@@ -224,7 +251,23 @@ export default function ChatPage() {
     return () => {
       cancelled = true;
     };
+  }, [selectedPdf?.url, previewPage]);
+
+  useEffect(() => {
+    setPreviewPage(1);
+    setPreviewPageCount(0);
+    setPreviewGlow(false);
   }, [selectedPdf?.url]);
+
+  function focusPreviewPageFromAnswer(answerText: string): void {
+    const pageRef = extractMentionedPage(answerText);
+    if (!pageRef) return;
+
+    setPreviewPage(pageRef);
+    setPreviewGlow(true);
+    planPreviewRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    window.setTimeout(() => setPreviewGlow(false), 1000);
+  }
 
   async function onAsk(prefilled?: string): Promise<void> {
     if (isAsking) return;
@@ -276,6 +319,7 @@ export default function ChatPage() {
 
       const assistantText = data?.answer ?? data?.reply ?? data?.received?.question;
       if (!assistantText) throw new Error("Empty response from server");
+      focusPreviewPageFromAnswer(assistantText);
 
       setHistory((prev) => [
         ...prev,
@@ -347,6 +391,7 @@ export default function ChatPage() {
         }
 
         const assistantContent = payload?.answer ?? payload?.reply ?? payload?.error ?? "Request failed";
+        focusPreviewPageFromAnswer(assistantContent);
         setHistory((prev) => [
           ...prev,
           {
@@ -394,6 +439,11 @@ export default function ChatPage() {
             <div className="panel-block">
               <div className="label">Selected PDF</div>
               <div className="panel-value">{selectedFileName}</div>
+              {previewPageCount > 0 ? (
+                <div className="muted">
+                  Previewing page {previewPage} of {previewPageCount}
+                </div>
+              ) : null}
               {selectedPdf?.url ? (
                 <Link
                   href={`/plans/${encodeURIComponent(selectedPdf.pdfFileName ?? selectedFileName)}?planUrl=${encodeURIComponent(selectedPdf.url)}&name=${encodeURIComponent(selectedFileName)}`}
@@ -404,7 +454,10 @@ export default function ChatPage() {
               ) : null}
               {activePlanName ? <div className="muted">Analysing: {activePlanName}</div> : null}
             </div>
-            <div className="plan-preview-wrap">
+            <div
+              className={`plan-preview-wrap ${previewGlow ? "plan-preview-glow" : ""}`.trim()}
+              ref={planPreviewRef}
+            >
               {viewerError ? <div className="alert-card">{viewerError}</div> : null}
               {viewerLoading ? <div className="muted">Loading plan preview...</div> : null}
               {!selectedPdf?.url ? <div className="muted">No PDF selected.</div> : null}
@@ -550,6 +603,11 @@ export default function ChatPage() {
           border: 1px solid #1f2937;
           background: white;
         }
+        .plan-preview-glow {
+          animation: planGlow 900ms ease;
+          border-color: #60a5fa;
+          box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.4);
+        }
         .page-ref {
           color: #94a3b8;
           font-size: 0.8em;
@@ -576,6 +634,14 @@ export default function ChatPage() {
         .quick-action-btn:disabled {
           opacity: 0.6;
           cursor: not-allowed;
+        }
+        @keyframes planGlow {
+          0% {
+            box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.55);
+          }
+          100% {
+            box-shadow: 0 0 0 10px rgba(96, 165, 250, 0);
+          }
         }
         @media (max-width: 1024px) {
           .chat-split {
