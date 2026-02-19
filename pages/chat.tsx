@@ -132,8 +132,14 @@ export default function ChatPage() {
   const [previewPage, setPreviewPage] = useState(1);
   const [previewPageCount, setPreviewPageCount] = useState(0);
   const [previewGlow, setPreviewGlow] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [pendingSpeechSubmit, setPendingSpeechSubmit] = useState<string | null>(null);
   const planCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const planPreviewRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const speechFinalRef = useRef("");
+  const messageRef = useRef("");
 
   useEffect(() => {
     const signedInEmail = readSignedInEmail();
@@ -219,6 +225,62 @@ export default function ChatPage() {
   const loadingText = useMemo(() => loadingLabel(tick), [tick]);
 
   useEffect(() => {
+    messageRef.current = message;
+  }, [message]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const RecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!RecognitionCtor) return;
+
+    const recognition = new RecognitionCtor();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onstart = () => {
+      speechFinalRef.current = "";
+      setIsListening(true);
+      setStatus("");
+    };
+
+    recognition.onresult = (event: any) => {
+      let finals = speechFinalRef.current;
+      let interim = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = event.results[i][0]?.transcript ?? "";
+        if (event.results[i].isFinal) {
+          finals = `${finals} ${transcript}`.trim();
+        } else {
+          interim = `${interim} ${transcript}`.trim();
+        }
+      }
+
+      speechFinalRef.current = finals;
+      const combined = `${finals} ${interim}`.trim();
+      setMessage(combined);
+    };
+
+    recognition.onerror = (event: any) => {
+      setIsListening(false);
+      setStatus(event?.error ? `Voice input error: ${event.error}` : "Voice input error.");
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      const transcript = (speechFinalRef.current || messageRef.current).trim();
+      speechFinalRef.current = "";
+      if (transcript) {
+        setPendingSpeechSubmit(transcript);
+      }
+    };
+
+    recognitionRef.current = recognition;
+    setSpeechSupported(true);
+  }, []);
+
+  useEffect(() => {
     if (!selectedPdf?.url || !planCanvasRef.current) return;
     let cancelled = false;
 
@@ -271,6 +333,10 @@ export default function ChatPage() {
 
   async function onAsk(prefilled?: string): Promise<void> {
     if (isAsking) return;
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
     const input = (prefilled ?? message).trim();
     if (!input) {
       setStatus("Please enter a message.");
@@ -343,6 +409,34 @@ export default function ChatPage() {
     } finally {
       setIsAsking(false);
     }
+  }
+
+  useEffect(() => {
+    if (!pendingSpeechSubmit || isAsking) return;
+    const text = pendingSpeechSubmit.trim();
+    setPendingSpeechSubmit(null);
+    if (!text) return;
+    void onAsk(text);
+  }, [pendingSpeechSubmit, isAsking]);
+
+  function onMicToggle(): void {
+    if (!speechSupported) {
+      setStatus("Voice input is not supported on this browser.");
+      return;
+    }
+
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+
+    if (isListening) {
+      recognition.stop();
+      setIsListening(false);
+      return;
+    }
+
+    speechFinalRef.current = "";
+    setPendingSpeechSubmit(null);
+    recognition.start();
   }
 
   useEffect(() => {
@@ -553,6 +647,16 @@ export default function ChatPage() {
                 <Link href="/uploads">
                   <Button variant="secondary">Go to Uploads</Button>
                 </Link>
+                <button
+                  type="button"
+                  className={`mic-btn ${isListening ? "mic-btn-listening" : ""}`.trim()}
+                  onClick={onMicToggle}
+                  disabled={isAsking}
+                  aria-label="Use voice input"
+                  title="Use voice input"
+                >
+                  Mic
+                </button>
                 <Button onClick={() => void onAsk()} loading={false} disabled={isAsking}>
                   Ask
                 </Button>
@@ -635,12 +739,40 @@ export default function ChatPage() {
           opacity: 0.6;
           cursor: not-allowed;
         }
+        .mic-btn {
+          border: 1px solid #334155;
+          border-radius: 999px;
+          background: #0f172a;
+          color: #e5e7eb;
+          padding: 0.45rem 0.9rem;
+          font-size: 0.82rem;
+          line-height: 1.2;
+          cursor: pointer;
+        }
+        .mic-btn-listening {
+          color: #fecaca;
+          border-color: #ef4444;
+          background: rgba(127, 29, 29, 0.4);
+          animation: micPulse 1s ease-in-out infinite;
+        }
+        .mic-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
         @keyframes planGlow {
           0% {
             box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.55);
           }
           100% {
             box-shadow: 0 0 0 10px rgba(96, 165, 250, 0);
+          }
+        }
+        @keyframes micPulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.35);
+          }
+          100% {
+            box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
           }
         }
         @media (max-width: 1024px) {
