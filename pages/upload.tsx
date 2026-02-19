@@ -330,17 +330,24 @@ export default function UploadPage() {
                     <span>{file.projectName ?? "Untitled Project"}</span>
                     <span>{formatUploadedAt(file.uploadedAt)}</span>
                     <span>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        onClick={() =>
-                          void router.push(
-                            `/chat?pdfFileName=${encodeURIComponent(file.pdfFileName ?? file.name)}&name=${encodeURIComponent(file.name)}&planUrl=${encodeURIComponent(file.url)}`
-                          )
-                        }
-                      >
-                        Analyse
-                      </Button>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <Link
+                          href={`/plans/${encodeURIComponent(file.pdfFileName ?? file.name)}?planUrl=${encodeURIComponent(file.url)}&name=${encodeURIComponent(file.name)}`}
+                        >
+                          <Button type="button" variant="secondary">View Plans</Button>
+                        </Link>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={() =>
+                            void router.push(
+                              `/chat?pdfFileName=${encodeURIComponent(file.pdfFileName ?? file.name)}&name=${encodeURIComponent(file.name)}&planUrl=${encodeURIComponent(file.url)}`
+                            )
+                          }
+                        >
+                          Analyse
+                        </Button>
+                      </div>
                     </span>
                   </div>
                 ))}
