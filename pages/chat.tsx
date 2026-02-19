@@ -456,21 +456,26 @@ export default function ChatPage() {
           display: grid;
           grid-template-columns: 3fr 2fr;
           gap: 16px;
-          min-height: 0;
+          height: calc(100vh - 100px);
+          overflow: hidden;
         }
         .plan-preview-panel,
         .chat-panel {
+          height: calc(100vh - 100px);
           min-height: 0;
+          overflow: hidden;
         }
         .plan-preview-panel .card-body {
           display: flex;
           flex-direction: column;
           gap: 12px;
           min-height: 0;
+          height: 100%;
+          overflow: hidden;
         }
         .plan-preview-wrap {
           flex: 1;
-          min-height: 280px;
+          min-height: 0;
           border: 1px solid #1f2937;
           border-radius: 12px;
           background: #020617;
@@ -481,16 +486,28 @@ export default function ChatPage() {
           padding: 14px;
         }
         .plan-preview-canvas {
+          width: 100%;
           max-width: 100%;
           height: auto;
           border-radius: 8px;
           border: 1px solid #1f2937;
           background: white;
         }
+        .chat-panel .card-body {
+          height: 100%;
+          overflow: auto;
+        }
         @media (max-width: 1024px) {
           .chat-split {
             grid-template-columns: 1fr;
             grid-template-rows: auto 1fr;
+            height: auto;
+            min-height: calc(100vh - 100px);
+            overflow: visible;
+          }
+          .plan-preview-panel,
+          .chat-panel {
+            height: auto;
           }
           .plan-preview-wrap {
             min-height: 320px;
