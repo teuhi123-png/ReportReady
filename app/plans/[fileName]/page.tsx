@@ -60,7 +60,7 @@ export default function PlanViewerPage({ params }: PageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [renderedPage, setRenderedPage] = useState(0);
-  const viewerRef = useRef<HTMLDivElement | null>(null);
+  const viewerScrollRef = useRef<HTMLDivElement | null>(null);
   const mainCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const planUrl = searchParams?.get("planUrl") ?? "";
@@ -156,8 +156,7 @@ export default function PlanViewerPage({ params }: PageProps) {
   useEffect(() => {
     if (!renderedPage) return;
     const timer = window.setTimeout(() => {
-      viewerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      mainCanvasRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+      viewerScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     }, 20);
     return () => window.clearTimeout(timer);
   }, [renderedPage]);
@@ -235,27 +234,32 @@ export default function PlanViewerPage({ params }: PageProps) {
           </div>
         </div>
 
-        <section className="viewer-canvas" ref={viewerRef}>
+        <section className="viewer-canvas-wrap">
+          <div className="viewer-canvas" ref={viewerScrollRef}>
           {error ? <div className="viewer-error">{error}</div> : null}
           {isLoading ? <div className="viewer-note">Loading PDF...</div> : null}
           <canvas ref={mainCanvasRef} className="main-canvas" />
           {!isLoading && !error && !pdfDoc && planUrl ? <div className="viewer-note">Rendering pages...</div> : null}
+          </div>
         </section>
       </main>
 
       <style jsx>{`
         .viewer-layout {
-          min-height: 100vh;
-          display: grid;
-          grid-template-columns: 280px 1fr;
+          height: 100vh;
+          display: flex;
+          overflow: hidden;
           background: #0b1020;
           color: #e5e7eb;
         }
         .viewer-sidebar {
+          width: 300px;
+          min-width: 300px;
           border-right: 1px solid #1f2937;
           padding: 16px;
           background: #0f172a;
-          overflow: auto;
+          overflow-y: auto;
+          height: 100%;
           position: relative;
           z-index: 5;
         }
@@ -321,12 +325,15 @@ export default function PlanViewerPage({ params }: PageProps) {
           font-size: 14px;
         }
         .viewer-main {
-          display: grid;
-          grid-template-rows: auto 1fr;
+          flex: 1;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
           gap: 12px;
           padding: 16px;
           position: relative;
           z-index: 1;
+          overflow: hidden;
         }
         .viewer-main::before {
           content: "";
@@ -343,6 +350,9 @@ export default function PlanViewerPage({ params }: PageProps) {
           justify-content: space-between;
           gap: 10px;
           flex-wrap: wrap;
+          position: sticky;
+          top: 0;
+          z-index: 10;
         }
         .toolbar-left,
         .toolbar-right {
@@ -367,7 +377,13 @@ export default function PlanViewerPage({ params }: PageProps) {
           color: #94a3b8;
           font-size: 13px;
         }
+        .viewer-canvas-wrap {
+          flex: 1;
+          min-height: 0;
+          overflow: hidden;
+        }
         .viewer-canvas {
+          height: 100%;
           border: 1px solid #1f2937;
           border-radius: 14px;
           background: #020617;
@@ -405,10 +421,11 @@ export default function PlanViewerPage({ params }: PageProps) {
         }
         @media (max-width: 900px) {
           .viewer-layout {
-            grid-template-columns: 1fr;
+            flex-direction: column;
           }
           .viewer-sidebar {
-            border-right: none;
+            width: 100%;
+            min-width: 100%;
             border-bottom: 1px solid #1f2937;
             max-height: 45vh;
           }
