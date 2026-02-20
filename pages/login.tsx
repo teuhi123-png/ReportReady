@@ -1,28 +1,39 @@
-import { useMemo, useState } from "react";
-import { useRouter } from "next/router";
+import { useState } from "react";
+import { supabase } from "../lib/supabaseClient";
 import Button from "../components/ui/Button";
-import { writeSignedInEmail } from "../lib/auth";
+
+type Status = "idle" | "loading" | "success" | "error";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const nextPath = useMemo(() => {
-    const raw = typeof router.query.next === "string" ? router.query.next : "/uploads";
-    return raw.startsWith("/") ? raw : "/uploads";
-  }, [router.query.next]);
-
-  function onSubmit(): void {
+  async function onSubmit(): Promise<void> {
     const trimmed = email.trim().toLowerCase();
     const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
     if (!isValid) {
-      setError("Enter a valid email address.");
+      setStatus("error");
+      setErrorMessage("Enter a valid email address.");
       return;
     }
 
-    writeSignedInEmail(trimmed);
-    void router.push(nextPath);
+    setStatus("loading");
+    setErrorMessage("");
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmed,
+      options: {
+        emailRedirectTo: `${window.location.origin}/dashboard`,
+      },
+    });
+
+    if (error) {
+      setStatus("error");
+      setErrorMessage(error.message);
+    } else {
+      setStatus("success");
+    }
   }
 
   return (
@@ -32,32 +43,62 @@ export default function LoginPage() {
           <div className="card-body" style={{ display: "grid", gap: 14 }}>
             <div>
               <h1 className="h1" style={{ marginBottom: 8 }}>
-                SiteMind Login
+                ReportReady Login
               </h1>
               <p className="muted" style={{ margin: 0 }}>
-                Sign in with your email to access uploads and AI chat.
+                Enter your email to receive a magic link and sign in.
               </p>
             </div>
 
-            <label className="input-field" htmlFor="login-email">
-              <div className="label">Email</div>
-              <input
-                id="login-email"
-                className={`input ${error ? "input-error" : ""}`.trim()}
-                placeholder="you@example.com"
-                type="email"
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  if (error) setError("");
+            {status === "success" ? (
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 8,
+                  background: "#ecfdf5",
+                  color: "#065f46",
+                  fontSize: 14,
+                  lineHeight: 1.5,
                 }}
-              />
-              {error && <div className="error">{error}</div>}
-            </label>
+              >
+                <strong>Check your inbox!</strong> We sent a magic link to{" "}
+                <strong>{email.trim().toLowerCase()}</strong>. Click it to sign in.
+              </div>
+            ) : (
+              <>
+                <label className="input-field" htmlFor="login-email">
+                  <div className="label">Email</div>
+                  <input
+                    id="login-email"
+                    className={`input ${status === "error" ? "input-error" : ""}`.trim()}
+                    placeholder="you@school.edu"
+                    type="email"
+                    value={email}
+                    disabled={status === "loading"}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      if (status === "error") {
+                        setStatus("idle");
+                        setErrorMessage("");
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && email.trim()) void onSubmit();
+                    }}
+                  />
+                  {status === "error" && errorMessage && (
+                    <div className="error">{errorMessage}</div>
+                  )}
+                </label>
 
-            <Button onClick={onSubmit} disabled={!email.trim()}>
-              Continue
-            </Button>
+                <Button
+                  onClick={() => void onSubmit()}
+                  disabled={!email.trim() || status === "loading"}
+                >
+                  {status === "loading" ? "Sending…" : "Send Magic Link"}
+                </Button>
+              </>
+            )}
           </div>
         </section>
       </div>
