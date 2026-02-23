@@ -1,7 +1,7 @@
 {
-  "name": "sitemind-ai-assistant",
+  "name": "reportready",
   "version": "1.0.0",
-  "description": "SiteMind AI Assistant web app",
+  "description": "AI-powered student observation and report writing tool for NZ primary school teachers",
   "main": "index.js",
   "directories": {
     "lib": "lib"
@@ -15,6 +15,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@alloc/quick-lru": "^5.2.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.57.2",
     "@vercel/blob": "^0.23.0",
     "next": "^16.1.6",
     "next-pwa": "^5.6.0",
@@ -29,6 +32,9 @@
     "@types/node": "25.2.2",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "19.2.13",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
     "typescript": "5.9.3"
   }
 }
