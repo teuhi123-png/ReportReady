@@ -1,192 +1,146 @@
-"use client";
+import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
-import { getSupabaseBrowserClient } from "@/lib/supabaseClient";
+export default async function ClassPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id: classId } = await params;
 
-type Subject = "reading" | "writing" | "maths";
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-const SUBJECTS: Subject[] = ["reading", "writing", "maths"];
+  if (!user) redirect("/login");
 
-type Student = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  preferred_name: string | null;
-};
+  const { data: cls, error: classError } = await supabase
+    .from("classes")
+    .select("id, name, year_level, subject")
+    .eq("id", classId)
+    .single();
 
-type StudentRow = Student & {
-  levels: Partial<Record<Subject, string>>;
-};
+  if (classError || !cls) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-8">
+        <div className="mx-auto w-full max-w-3xl">
+          <p className="text-sm text-red-600">Class not found.</p>
+          <Link href="/classes" className="mt-2 inline-block text-sm text-emerald-700 hover:underline">
+            ← Back to classes
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
-export default function ClassOverviewPage() {
-  const router = useRouter();
-  const params = useParams<{ id: string }>();
-  const classId = params.id;
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const { data: students } = await supabase
+    .from("students")
+    .select("id, first_name, last_name, created_at")
+    .eq("class_id", classId)
+    .order("created_at", { ascending: true });
 
-  const [rows, setRows] = useState<StudentRow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState("");
+  async function addStudent(formData: FormData) {
+    "use server";
 
-  useEffect(() => {
-    let active = true;
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    async function load() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+    if (!user) redirect("/login");
 
-      if (!active) return;
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
+    const first_name = (formData.get("first_name") as string).trim();
+    const last_name = (formData.get("last_name") as string).trim();
+    const class_id = formData.get("class_id") as string;
 
-      // 1. Fetch all students in this class, sorted alphabetically
-      const { data: students, error: studentsError } = await supabase
-        .from("students")
-        .select("id, first_name, last_name, preferred_name")
-        .eq("class_id", classId)
-        .order("last_name", { ascending: true });
+    if (!first_name || !last_name || !class_id) return;
 
-      if (!active) return;
+    await supabase.from("students").insert({ class_id, first_name, last_name });
 
-      if (studentsError) {
-        setError(studentsError.message);
-        setIsLoading(false);
-        return;
-      }
-
-      if (!students || students.length === 0) {
-        setRows([]);
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. Fetch all assessments for those students in one query (newest first)
-      const studentIds = students.map((s) => s.id);
-
-      const { data: assessments, error: assessmentsError } = await supabase
-        .from("assessments")
-        .select("student_id, subject, level, created_at")
-        .in("student_id", studentIds)
-        .order("created_at", { ascending: false });
-
-      if (!active) return;
-
-      if (assessmentsError) {
-        setError(assessmentsError.message);
-        setIsLoading(false);
-        return;
-      }
-
-      // 3. Derive the latest level per student per subject.
-      //    Because assessments are sorted newest-first, the first entry we see
-      //    for each (student_id, subject) pair is always the current level.
-      const latestMap = new Map<string, Partial<Record<Subject, string>>>();
-
-      for (const a of assessments ?? []) {
-        if (!latestMap.has(a.student_id)) {
-          latestMap.set(a.student_id, {});
-        }
-        const levels = latestMap.get(a.student_id)!;
-        if (!levels[a.subject as Subject]) {
-          levels[a.subject as Subject] = a.level;
-        }
-      }
-
-      setRows(
-        students.map((s) => ({
-          ...s,
-          levels: latestMap.get(s.id) ?? {},
-        })),
-      );
-      setIsLoading(false);
-    }
-
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [classId, router, supabase]);
+    revalidatePath(`/classes/${class_id}`);
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8">
-      <section className="mx-auto w-full max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <p className="text-sm font-semibold text-emerald-700">ReportReady</p>
-        <div className="mt-2 flex items-start justify-between gap-4">
-          <h1 className="text-2xl font-semibold text-slate-900">Class Overview</h1>
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+
+        {/* Header */}
+        <div>
+          <p className="text-sm font-semibold text-emerald-700">ReportReady</p>
           <Link
-            href={`/classes/${classId}/students`}
-            className="shrink-0 text-sm font-medium text-emerald-700 hover:underline"
+            href="/classes"
+            className="mt-1 inline-block text-xs text-slate-500 hover:text-emerald-700"
           >
-            Manage students →
+            ← Back to classes
           </Link>
+          <h1 className="mt-2 text-2xl font-semibold text-slate-900">{cls.name}</h1>
+          <p className="text-sm text-slate-500">{cls.year_level} · {cls.subject}</p>
         </div>
 
-        {error && (
-          <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-
-        {isLoading ? (
-          <p className="mt-6 text-sm text-slate-500">Loading...</p>
-        ) : rows.length === 0 ? (
-          <p className="mt-6 text-sm text-slate-500">
-            No students yet.{" "}
-            <Link
-              href={`/classes/${classId}/students`}
-              className="text-emerald-700 underline"
+        {/* Add student */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900">Add Student</h2>
+          <form action={addStudent} className="mt-4 flex flex-wrap gap-3">
+            <input type="hidden" name="class_id" value={classId} />
+            <input
+              name="first_name"
+              type="text"
+              required
+              placeholder="First name"
+              className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:border-emerald-600 focus:ring-2"
+            />
+            <input
+              name="last_name"
+              type="text"
+              required
+              placeholder="Last name"
+              className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 outline-none ring-emerald-200 transition focus:border-emerald-600 focus:ring-2"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-800"
             >
-              Add students
-            </Link>
-          </p>
-        ) : (
-          <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-700">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Student</th>
-                  <th className="px-4 py-3 font-medium">Reading</th>
-                  <th className="px-4 py-3 font-medium">Writing</th>
-                  <th className="px-4 py-3 font-medium">Maths</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((student) => {
-                  const displayName =
-                    student.preferred_name || student.first_name;
-                  return (
-                    <tr
-                      key={student.id}
-                      className="border-t border-slate-200 hover:bg-slate-50"
-                    >
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/classes/${classId}/students/${student.id}`}
-                          className="font-medium text-slate-900 hover:text-emerald-700"
-                        >
-                          {displayName} {student.last_name}
-                        </Link>
-                      </td>
-                      {SUBJECTS.map((sub) => (
-                        <td key={sub} className="px-4 py-3 text-slate-700">
-                          {student.levels[sub] ?? "—"}
-                        </td>
-                      ))}
+              Add
+            </button>
+          </form>
+        </section>
+
+        {/* Students list */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900">
+            Students ({students?.length ?? 0})
+          </h2>
+
+          {!students || students.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-500">No students yet. Add one above.</p>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-slate-700">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">First name</th>
+                    <th className="px-4 py-3 font-medium">Last name</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {students.map((student) => (
+                    <tr key={student.id} className="border-t border-slate-200">
+                      <td className="px-4 py-3 text-slate-900">{student.first_name}</td>
+                      <td className="px-4 py-3 text-slate-900">{student.last_name}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+      </div>
     </main>
   );
 }
