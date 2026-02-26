@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type SubjectValue = "reading" | "maths" | "general";
@@ -59,6 +59,13 @@ export default function ObservationLoggerForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  const [recordingSupported, setRecordingSupported] = useState(true);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
   const displayedGroupLevel = useMemo(() => {
     const fromSubject = groupLevels[subject];
@@ -67,13 +74,104 @@ export default function ObservationLoggerForm({
     return "Not set";
   }, [classYearLevel, groupLevels, subject]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setRecordingSupported(
+      typeof navigator !== "undefined" &&
+        !!navigator.mediaDevices?.getUserMedia &&
+        typeof MediaRecorder !== "undefined",
+    );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+      mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [audioPreviewUrl]);
+
+  async function startRecording() {
+    if (!recordingSupported || isRecording) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      chunksRef.current = [];
+
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        setAudioBlob(blob);
+        if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+        setAudioPreviewUrl(URL.createObjectURL(blob));
+        mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      };
+
+      recorder.start();
+      setIsRecording(true);
+      setError(null);
+    } catch {
+      setError("Microphone access was denied or unavailable.");
+    }
+  }
+
+  function stopRecording() {
+    if (!isRecording) return;
+    mediaRecorderRef.current?.stop();
+    setIsRecording(false);
+  }
+
+  async function uploadAudioClip(blob: Blob) {
+    const formData = new FormData();
+    formData.append("student_id", studentId);
+    formData.append("audio", new File([blob], `observation-${Date.now()}.webm`, { type: blob.type }));
+
+    const uploadResponse = await fetch("/api/observations/audio", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!uploadResponse.ok) {
+      const payload = await uploadResponse.json().catch(() => null);
+      throw new Error(payload?.error || "Could not upload audio.");
+    }
+
+    const payload = await uploadResponse.json();
+    return String(payload.url);
+  }
+
   async function handleSave() {
     if (!rating || saving) return;
+    if (isRecording) {
+      setError("Stop recording before saving.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
 
     const { term, year } = getCurrentTermAndYear();
+    let noteAudioUrl: string | null = null;
+
+    if (audioBlob) {
+      try {
+        noteAudioUrl = await uploadAudioClip(audioBlob);
+      } catch (uploadError) {
+        const message =
+          uploadError instanceof Error ? uploadError.message : "Could not upload audio clip.";
+        setError(message);
+        setSaving(false);
+        return;
+      }
+    }
 
     const response = await fetch("/api/observations", {
       method: "POST",
@@ -83,6 +181,7 @@ export default function ObservationLoggerForm({
         subject,
         rating,
         note: note.trim() || null,
+        note_audio_url: noteAudioUrl,
         term,
         year,
         created_at: new Date().toISOString(),
@@ -159,6 +258,31 @@ export default function ObservationLoggerForm({
                   </button>
                 );
               })}
+            </div>
+          </section>
+
+          <section className="mt-5">
+            <p className="mb-2 text-sm font-semibold text-slate-700">Voice note (optional)</p>
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={!recordingSupported || saving}
+                className={`w-full rounded-xl px-4 py-4 text-lg font-semibold text-white transition ${
+                  isRecording ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"
+                } disabled:cursor-not-allowed disabled:bg-slate-300`}
+              >
+                {isRecording ? "Stop Recording" : "Tap to Record"}
+              </button>
+              {!recordingSupported && (
+                <p className="text-sm text-slate-500">Voice recording is not supported on this device.</p>
+              )}
+              {audioPreviewUrl && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="mb-2 text-sm font-medium text-slate-700">Recording ready</p>
+                  <audio controls src={audioPreviewUrl} className="w-full" />
+                </div>
+              )}
             </div>
           </section>
 

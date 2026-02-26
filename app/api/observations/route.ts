@@ -24,6 +24,11 @@ export async function POST(request: Request) {
   const rating = String(payload?.rating || "").trim() as RatingValue;
   const noteValue = payload?.note;
   const note = typeof noteValue === "string" ? noteValue.trim() || null : null;
+  const noteAudioValue = payload?.note_audio_url;
+  const note_audio_url =
+    typeof noteAudioValue === "string" && noteAudioValue.trim()
+      ? noteAudioValue.trim()
+      : null;
   const term = Number(payload?.term);
   const year = Number(payload?.year);
   const created_at = String(payload?.created_at || "").trim();
@@ -44,11 +49,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid created_at." }, { status: 400 });
   }
 
+  if (note_audio_url) {
+    try {
+      new URL(note_audio_url);
+    } catch {
+      return NextResponse.json({ error: "Invalid note_audio_url." }, { status: 400 });
+    }
+  }
+
   const { error } = await supabase.from("observations").insert({
     student_id,
     subject,
     rating,
     note,
+    note_audio_url,
     term,
     year,
     created_at,
